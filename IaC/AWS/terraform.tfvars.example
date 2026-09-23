@@ -1,0 +1,25 @@
+# AWS Region configuration (Defaulting to AWS West)
+aws_region_primary = "us-west-2"
+
+# Project identification
+environment  = "demo"
+project_name = "c360"
+
+# --- Option 1: Existing VPC & Subnets ---
+# Replace with your actual existing VPC ID:
+vpc_id = "vpc-0123456789abcdef0"
+
+# Optional: specify explicit subnets in the VPC (must cover at least 2 distinct Availability Zones)
+# Leave as null to auto-discover all subnets within the specified VPC
+subnet_ids = null
+
+# Optional: Add extra CIDR blocks allowed to access the database (e.g. VPN, Bastion, Confluent VPC)
+# If left empty, ingress is automatically restricted to the VPC CIDR block
+db_allowed_cidr_blocks = []
+
+# --- PostgreSQL RDS Configuration ---
+db_name                  = "c360db"
+db_username              = "dbadmin"
+db_instance_class        = "db.t4g.micro"
+db_allocated_storage     = 20
+db_max_allocated_storage = 100
