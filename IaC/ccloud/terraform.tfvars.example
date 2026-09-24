@@ -1,0 +1,28 @@
+# terraform.tfvars.example
+# Copy to terraform.tfvars and fill in real values.
+# Do NOT commit terraform.tfvars to version control.
+
+# ── Confluent Cloud credentials ────────────────────────────────────────────────
+# Obtain from: Confluent Cloud Console → API Keys
+confluent_cloud_api_key    = "REPLACE_WITH_API_KEY"
+confluent_cloud_api_secret = "REPLACE_WITH_API_SECRET"
+
+# ── Existing Confluent Cloud resources ─────────────────────────────────────────
+# Confluent Cloud Console → Environments → select environment → copy ID (env-...)
+confluent_environment_id = "env-XXXXXX"
+
+# Confluent Cloud Console → select cluster → Settings → copy Cluster ID (lkc-...)
+confluent_kafka_cluster_id = "lkc-XXXXXX"
+
+# ── AWS configuration ──────────────────────────────────────────────────────────
+aws_region_primary = "us-west-2"
+
+# ARN of the RDS credentials secret created by IaC/AWS.
+# Get it with: terraform -chdir=IaC/AWS output secrets_manager_secret_arn
+rds_secret_arn = "arn:aws:secretsmanager:us-west-2:123456789012:secret:c360-demo-rds-credentials-XXXXXX"
+
+# ── Optional overrides (defaults shown) ───────────────────────────────────────
+# connector_name       = "c360-debezium-postgres-source"
+# cdc_publication_name = "c360_cdc_publication"
+# cdc_slot_name        = "c360_debezium_slot"
+# kafka_topic_prefix   = "c360"

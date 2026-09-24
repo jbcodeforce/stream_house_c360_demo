@@ -191,6 +191,7 @@ def build_conn_params(args: argparse.Namespace) -> dict:
     if args.secret_arn:
         log.info("Loading connection details from Secrets Manager: %s", args.secret_arn)
         secret = fetch_secret(args.secret_arn, args.region)
+        print(secret)
         params = {
             "host": secret["host"],
             "port": int(secret.get("port", 5432)),
@@ -246,7 +247,6 @@ def main() -> None:
     log.info("Connecting to %s:%s/%s as %s …",
              conn_params["host"], conn_params["port"],
              conn_params["dbname"], conn_params["user"])
-
     with psycopg2.connect(**conn_params) as conn:
         conn.autocommit = False
         with conn.cursor() as cur:

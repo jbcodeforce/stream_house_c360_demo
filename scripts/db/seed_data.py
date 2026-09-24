@@ -137,6 +137,8 @@ def build_conn_params(args: argparse.Namespace) -> dict:
     }
     if args.sslmode not in ("disable", "allow"):
         params["sslrootcert"] = args.ssl_root_cert
+    
+    print(params)
     return params
 
 
