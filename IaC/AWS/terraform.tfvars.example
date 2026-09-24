@@ -13,9 +13,15 @@ vpc_id = "vpc-0123456789abcdef0"
 # Leave as null to auto-discover all subnets within the specified VPC
 subnet_ids = null
 
-# Optional: Add extra CIDR blocks allowed to access the database (e.g. VPN, Bastion, Confluent VPC)
-# If left empty, ingress is automatically restricted to the VPC CIDR block
-db_allowed_cidr_blocks = []
+# --- Accessibility & Allowed Ingress CIDRs ---
+publicly_accessible = true
+
+# Allow your local machine IP and Confluent Cloud Egress IPs (never use 0.0.0.0/0)
+# E.g.: ["YOUR_LOCAL_IP/32", "CONFLUENT_NAT_GW_IP_1/32", "CONFLUENT_NAT_GW_IP_2/32"]
+db_allowed_cidr_blocks = [
+  # "YOUR_LOCAL_IP/32",
+  # "CONFLUENT_EGRESS_IP/32"
+]
 
 # --- PostgreSQL RDS Configuration ---
 db_name                  = "c360db"

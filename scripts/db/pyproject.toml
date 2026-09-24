@@ -1,0 +1,15 @@
+[project]
+name = "c360-db"
+version = "0.1.0"
+description = "Customer 360 DB bootstrap — schema creation and synthetic data seeding for PostgreSQL RDS"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "boto3>=1.43.101",
+    "faker>=40.39.0",
+    "psycopg2-binary>=2.9.13",
+]
+
+[project.scripts]
+create-tables = "create_tables:main"
+seed-data     = "seed_data:main"

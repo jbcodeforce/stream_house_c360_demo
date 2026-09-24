@@ -64,8 +64,37 @@ variable "db_max_allocated_storage" {
   default     = 100
 }
 
+variable "publicly_accessible" {
+  type        = bool
+  description = "Whether the RDS instance should be publicly accessible (requires public subnets)"
+  default     = true
+}
+
+variable "confluent_cloud_api_key" {
+  type        = string
+  description = "Confluent Cloud API Key (or set via CONFLUENT_CLOUD_API_KEY environment variable)"
+  default     = null
+}
+
+variable "confluent_cloud_api_secret" {
+  type        = string
+  description = "Confluent Cloud API Secret (or set via CONFLUENT_CLOUD_API_SECRET environment variable)"
+  sensitive   = true
+  default     = null
+}
+
+variable "confluent_region" {
+  type        = string
+  description = "Confluent Cloud region for Connect / Kafka egress IPs (defaults to aws_region_primary)"
+  default     = null
+}
+
 variable "db_allowed_cidr_blocks" {
   type        = list(string)
-  description = "List of CIDR blocks allowed to access PostgreSQL (e.g. VPC CIDR or VPN CIDR)"
+  description = "Additional CIDR blocks allowed to access PostgreSQL (e.g. workstation IP/32)"
   default     = []
+}
+
+variable "my_ip_addr" {
+  type        = string
 }

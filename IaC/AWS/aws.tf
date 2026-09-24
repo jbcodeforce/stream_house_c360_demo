@@ -24,13 +24,17 @@ resource "aws_security_group" "rds_sg" {
   description = "Controls inbound and outbound traffic for Postgres RDS in ${data.aws_vpc.existing.id}"
   vpc_id      = data.aws_vpc.existing.id
 
-  # Ingress rule: Allow Postgres TCP port 5432 from VPC CIDR and any extra allowed CIDRs
+  # Ingress rule: Allow Postgres TCP port 5432 from VPC, client CIDRs, and Confluent Cloud egress
   ingress {
-    description = "Allow inbound PostgreSQL traffic from VPC and authorized networks"
+    description = "Allow inbound PostgreSQL traffic from VPC, clients, and Confluent Cloud Connectors"
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
-    cidr_blocks = length(var.db_allowed_cidr_blocks) > 0 ? var.db_allowed_cidr_blocks : [data.aws_vpc.existing.cidr_block]
+    cidr_blocks = distinct(concat(
+      [data.aws_vpc.existing.cidr_block],
+      var.db_allowed_cidr_blocks,
+      [for ip in data.confluent_ip_addresses.connectors.ip_addresses : ip.ip_prefix]
+    ))
   }
 
   # Egress rule: Default outbound traffic allowance
@@ -101,11 +105,11 @@ resource "aws_secretsmanager_secret_version" "db_credentials_val" {
 # 3. Database Parameter and Option Configuration
 ################################################################################
 
-# Custom Parameter Group for PostgreSQL 16 (enables fine-tuning, e.g. logical decoding for CDC)
-resource "aws_db_parameter_group" "postgres16" {
-  name        = "${var.project_name}-${var.environment}-pg16-params"
-  family      = "postgres16"
-  description = "Custom parameter group for PostgreSQL 16"
+# Custom Parameter Group for PostgreSQL 17 (enables fine-tuning, e.g. logical decoding for CDC)
+resource "aws_db_parameter_group" "postgres17" {
+  name        = "${var.project_name}-${var.environment}-pg17-params"
+  family      = "postgres17"
+  description = "Custom parameter group for PostgreSQL 17"
 
   # Enforce TLS/SSL connections
   parameter {
@@ -121,7 +125,7 @@ resource "aws_db_parameter_group" "postgres16" {
   }
 
   tags = {
-    Name        = "${var.project_name}-${var.environment}-pg16-params"
+    Name        = "${var.project_name}-${var.environment}-pg17-params"
     Environment = var.environment
   }
 }
@@ -135,9 +139,9 @@ resource "aws_db_instance" "postgres" {
 
   # Engine configuration
   engine               = "postgres"
-  engine_version       = "16.4"
+  engine_version       = "17"
   instance_class       = var.db_instance_class
-  parameter_group_name = aws_db_parameter_group.postgres16.name
+  parameter_group_name = aws_db_parameter_group.postgres17.name
 
   # Database settings
   db_name  = var.db_name
@@ -154,7 +158,7 @@ resource "aws_db_instance" "postgres" {
   # Network & Placement
   db_subnet_group_name   = aws_db_subnet_group.rds.name
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  publicly_accessible    = false
+  publicly_accessible    = var.publicly_accessible
 
   # High Availability & Backup
   multi_az                = false # Set to true for production high availability
