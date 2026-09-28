@@ -1,7 +1,7 @@
 # Streamhouse Customer 360
 
 
-The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks.
+The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. 
 
 At the high level Streamhouse reference architecture looks like in the figure below:
 
@@ -17,6 +17,13 @@ The goal is to demonstrate synchronize a change in business state everywhere it 
 
 ![](./docs/stream-cut1-arch.drawio.png)
 
+* Microservice applications write to database table. (they will be mcoked up to simple Fast API CRUD on each entities)
+* CDC Debezium Kafka Connector, create one topic per table, define schema in schema registry
+* A set of Flink queries will prepare the data to build customer 360 analytics metrics, that will be served in a sink topic
+* Sink topic is processed by Tableflow to export data as Iceberg table / parquet files into object storage
+* External catalogs are in sync with Tableflow catalog
+* Other queries are done by Data engineer on data at rest.
+
 ## Actors
 
 We can consider three actors
@@ -27,11 +34,29 @@ We can consider three actors
 
 ### SRE
 
-This use case helps to demonstrate the following tasks a SRE needs to conduct to prepare the environment to support the above architecture
+This use case helps to demonstrate the following tasks a SRE needs to conduct to prepare the environment to support the above architecture:
+
+1. [ ] Create environment, create APIs, roles and kakfa cluster  with terraform 
+1. [ ] Create private network and network link with CC could  with terraform 
+1. [ ] Create compute pool  with terraform 
+1. [x] Create a RDS service with a Postgresql instance with terraform 
+1. [ ] Option: Create Ec2 servers to run DB2 (community edition for demonstration)
+1. [x] Create database and tables: accounnts, customers, transactions
+1. [ ] Schemas created in schema registry by CDC connector
+1. [x] Emulate microservices to write new records to those three tables
+1. [x] Create Debezium CDC Source connector for DB tables using terraform
+1. [ ] Enable tableflow on
 
 ### Data Engineer
 
+1. [ ] Create dbt project to manage statement with git, reflecting star model
+1. [ ] Deploy Flionk logic with SQLs from Confluent Cloud Workspace to dbt models, to `dbt run`
+
+
 ### Application Developer
+
+1. [ ] Define contract for data / analytics, and the methodology to engage with Data engineers
+1. [ ] Maintain schema evolution with full transitivity
 
 ## Infrastructure as code
 
