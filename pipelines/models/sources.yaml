@@ -1,9 +1,9 @@
 version: 2
 sources:
 - name: cc_flink
+  schema: j9r-kafka
   tables:
   - name: cdc.public.customers
-    identifier: cdc.public.customers
     description: Topic 'cdc.public.customers' — registered via sl-dbt get-schema-existing-topic-to-dbt.
     columns:
     - name: customer_id

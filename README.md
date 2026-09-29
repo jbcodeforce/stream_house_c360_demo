@@ -1,7 +1,7 @@
 # Streamhouse Customer 360
 
 
-The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. 
+The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. 
 
 At the high level Streamhouse reference architecture looks like in the figure below:
 
@@ -49,9 +49,10 @@ This use case helps to demonstrate the following tasks a SRE needs to conduct to
 
 ### Data Engineer
 
-1. [ ] Create dbt project to manage statement with git, reflecting star model
+1. [x] Create dbt project to manage statement with git, reflecting star model
 1. [ ] Deploy Flionk logic with SQLs from Confluent Cloud Workspace to dbt models, to `dbt run`
 
+**Star model**: 
 
 ### Application Developer
 
@@ -60,9 +61,11 @@ This use case helps to demonstrate the following tasks a SRE needs to conduct to
 
 ## Infrastructure as code
 
+The steps in this section are for SREs
+
 ### Pre-requisites
 
-* Get Terraform
+* Get Terraform cli
 * Get aws CLI
 * Have CONFLUENT_API_KEY and SECRET
 * Get psql client to query Postgresql instance:
@@ -352,7 +355,7 @@ Under scripts/local-tests there is a script to start postgresql locally so we ca
 
 1. Get the schema from the raw topic to process and automatically generate the source.yaml for dbt
     ```sh
-    uv run  sl-dbt get-schema-existing-topic-to-dbt ~/Code/stream_house_c360_demo raw_customers
+    uv run  sl-dbt get-schema-existing-topic-to-dbt ~/Code/stream_house_c360_demo cdc.public.customers
     ```
 
 1. Continue to create the following flink statements to deduplicate, filter and transform raw CDC topics.

@@ -1,7 +1,7 @@
 
 {{ config(
     materialized='streaming_table',
-    distributed_by='customer_id',
+    distributed_by= {'columns': ['customer_id'], 'buckets': 2},
     with={
         'changelog.mode': 'upsert',
         'key.format': 'avro-registry',
@@ -14,22 +14,22 @@
     }
 ) }}
 
--- Migrated from dml.src_c360_customers.sql
+-- Migrated from 
 with deduplicated_customers as (
     SELECT 
         customer_id,
         first_name,
         last_name,
         email,
+        phone,
         date_of_birth,
         gender,
-        created_at,
+        registration_date,
         customer_segment,
-        preferred_channel,
         address_line1,
         city,
         state,
-        zip_code,
+        postal_code,
         country,
         event_ts
     FROM (
@@ -41,25 +41,25 @@ with deduplicated_customers as (
             phone,
             date_of_birth,
             gender,
-            registration_date,
-            customer_segment,
-            preferred_channel,
+            created_at as registration_date,
+            segment as customer_segment,
             address_line1,
             city,
             state,
-            zip_code,
+            postal_code,
             country,
             `$rowtime` as event_ts, -- propagate src ts to downstream
             ROW_NUMBER() OVER (
                 PARTITION BY customer_id 
                 ORDER BY `$rowtime` DESC
             ) AS row_num
-        FROM {{ source('sql_scripts', 'customers_raw') }}
-        WHERE customer_id IS NOT NULL 
+        FROM {{ source('cc_flink', 'cdc.public.customers') }}
+        WHERE customer_id IS NOT NULL AND status = 'ACTIVE'
     ) WHERE row_num = 1
 )
 
 SELECT 
+
     customer_id,
     first_name,
     last_name,
@@ -69,12 +69,12 @@ SELECT
     gender,
     registration_date,
     customer_segment,
-    preferred_channel,
     address_line1,
     city,
     state,
-    zip_code,
+    postal_code,
     country,
+    event_ts,
     TIMESTAMPDIFF(YEAR, CAST(date_of_birth AS TIMESTAMP_LTZ(3)), event_ts) age_years,
     TIMESTAMPDIFF(DAY, CAST(registration_date AS TIMESTAMP_LTZ(3)), event_ts) as days_since_registration,
      CASE
