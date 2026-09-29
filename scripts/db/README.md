@@ -109,9 +109,6 @@ uv run python seed_data.py \
 Dependencies are declared in [`pyproject.toml`](pyproject.toml) and pinned in [`uv.lock`](uv.lock).
 
 ```bash
-# Add a new dependency
-uv add <package>
-
 # Upgrade all dependencies to latest compatible versions
 uv sync --upgrade
 ```

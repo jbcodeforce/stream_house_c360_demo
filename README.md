@@ -112,9 +112,22 @@ It is important to get the following information to be able to create the Kafka 
 
 | Resources | |
 |-----| ---- |
-| | Region |
-| secrets_manager_secret_arn | Resource ref for AWS Secrets Manager| 
+| Region | us-west-2 |
+| RDS host name | e.g. c360-j9r-postgres.c.....us-west-2.rds.amazonaws.com |
+| secrets_manager_secret_arn | Resource ref for AWS Secrets Manager |
+| Database password  | Coud be created by the admin or retrieve from the secret |
 | Public certificates | a .pem file to download |
+
+![](./docs/images/aws/aws-rds-info.png)
+
+*To retrieve password from secret, knowing the secret arn do:*
+```sh
+aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:us-west-2:.....:secret:c360-j9r-rds-credentials-9x --query SecretString --output text |jq -r .password
+```
+
+It is possible to retrieve the secret ARN from secrets manager:
+
+![](./docs/images/aws/aws-secrets.png)
 
 #### Populate some data into the source database
 
@@ -151,16 +164,29 @@ Once the database instance is created and has DNS server name and port number an
 
     ![](./docs/images/ccloud/cdc-topic-cfg.png)
 
-1. Define how to access the Kafka cluster. Use an existing API Key
+1. Define how to access the Kafka cluster. Use an existing API Key ...
 
     ![](./docs/images/ccloud/cdc-kafka-access.png)
+
+    or create a new one
+
+    ![](./docs/images/ccloud/cdc-kafka-access-2.png)
+
+
+1. Define connection credentials to external database
+    ![](./docs/images/ccloud/cc-cdc-auth.png)
+
 
 1. Define topic configuration
     ![](./docs/images/ccloud/cdc-sr-avro.png)
 
 1. Launch the connector
 1. Verify created topics
+    ![](./docs/images/ccloud/kafka-topics.png)
+
 1. Verify Schema registry schemas
+    ![](./docs/images/ccloud/cdc-schemas.png)
+
 
 ### Terraform
 
@@ -184,11 +210,10 @@ We assume for the current documentation that AWS will be used as cloud provider 
 * Run: `terraform init` under IaC folder
 * Find you the public IP address of your machine: [https://checkip.amazonaws.com](https://checkip.amazonaws.com)
 * Modify terraform environment variables `terraform.tfvars` with:
-
-```sh
-db_allowed_cidr_blocks
-my_ip_addr
-```
+    ```sh
+    db_allowed_cidr_blocks
+    my_ip_addr
+    ```
 
 #### AWS Resources: RDS Postgresql
 
@@ -395,6 +420,11 @@ Under the `scripts/local-tests` folder, there is a script to start postgresql lo
 
 ## Flink Project Management
 
+We want to implement the following pipelines:
+
+![](./docs/diagrams/stream-flink.drawio.png)
+
+
 1. First create the pipeline fodler to manage the different Flink SQL statement, using the star model. This can be done manually or use tool from [flink-tools-for-agents](https://github.com/jbcodeforce/flink-tools-for-agents/tree/main/tools/dbt)
     ```sh
     uv run sl-dbt init ~/Code/stream_house_c360_demo
@@ -454,6 +484,30 @@ Under the `scripts/local-tests` folder, there is a script to start postgresql lo
         └── tests
     ```
 
+1. Use the Confluent Cloud Workspace to develop query by using an incremental approach. We will illustrate the approach for beginner.
+
+    1. Assess the source table structure. Run the SQL: `show create table cdc.public.customers`
+        ![](./docs/images/flink/show_create_table.png)
+
+        We can observe the Debezium envelop is already transformed to the sub schema. We can very the schema definitio in the schema repository has a before and after envelop. Go to schema registry page and select `cdc.public.customers-value` 
+
+        ![](./docs/images/flink/schema_customer.png)
+
+        The reason is the default format for the value and the key are set as:
+        ```sh
+        value.format' = 'avro-debezium-registry'
+        ```
+
+        We can do the same for: `show create table cdc.public.accounts;` and `show create table cdc.public.transactions;`
+
+        We can also discover that by default the changelog mode is set to `retract`. So we could not run snapshot queries but only streaming query.
+
+    1. Look at some data and select only active customer
+        ```sql
+        SELECT * FROM `j9r-env`.`j9r-kafka`.`cdc.public.customers` where status = 'ACTIVE';
+        ```
+
+
 1. Get the schema from the raw topic to process and automatically generate the source.yaml for dbt
     ```sh
     uv run  sl-dbt get-schema-existing-topic-to-dbt ~/Code/stream_house_c360_demo cdc.public.customers
@@ -463,9 +517,11 @@ Under the `scripts/local-tests` folder, there is a script to start postgresql lo
 
 | Source Table(s) | Folder Name | Sink Table |
 | ----------------| ------------ |-----------| 
-| | sources | src_dedup_accounts | 
-| | sources | src_dedup_customers | 
-| | sources | src_dedup_transactions |
+| cdc.public.accounts | sources | src_accounts | 
+| cdc.public.customers | sources | src_customers | 
+| cdc.public.transactions| sources | src_transactions |
+|  src_dedup_customers, src_dedup_accounts | dimension |  dim_customers|
+| dim_customers, src_transactions | facts | fct_c360_profiles |
 
 
 
