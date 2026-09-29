@@ -1,5 +1,6 @@
 # Streamhouse Customer 360
 
+*Updated 9/29/2026*
 
 The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. 
 
@@ -15,7 +16,7 @@ When applied to Confluent technology stack will map to the following components:
 
 The goal is to demonstrate synchronize a change in business state everywhere it is used. We will mockup transactional application / microservices writing transactions, accounts and customers records to a SQL database. We can use IBM Db2 RDBMS or Postgresql deployed on AWS RDS service. The end to end architecture looks like:
 
-![](./docs/stream-cut1-arch.drawio.png)
+![](./docs/diagrams/stream-cut1-arch.drawio.png)
 
 * Microservice applications write to database table. (they will be mcoked up to simple Fast API CRUD on each entities)
 * CDC Debezium Kafka Connector, create one topic per table, define schema in schema registry
@@ -34,36 +35,138 @@ We can consider three actors
 
 ### SRE
 
-This use case helps to demonstrate the following tasks a SRE needs to conduct to prepare the environment to support the above architecture:
+This use case helps to demonstrate the following tasks a SRE needs to conduct to prepare the environment to support the above architecture. There are two ways to execute those tasks, via Confluent Cloud Console or via infrastructure as code, using Terraform. The following bullet points are generic task description that should be done using both approaches, (some are for production deployment too). 
 
-1. [ ] Create environment, create APIs, roles and kakfa cluster  with terraform 
-1. [ ] Create private network and network link with CC could  with terraform 
-1. [ ] Create compute pool  with terraform 
-1. [x] Create a RDS service with a Postgresql instance with terraform 
-1. [ ] Option: Create Ec2 servers to run DB2 (community edition for demonstration)
-1. [x] Create database and tables: accounnts, customers, transactions
-1. [ ] Schemas created in schema registry by CDC connector
-1. [x] Emulate microservices to write new records to those three tables
-1. [x] Create Debezium CDC Source connector for DB tables using terraform
-1. [ ] Enable tableflow on
+1. Create environment, create APIs, roles and kakfa cluster 
+1. For Production deployment create private network and network link to Confluent cloud 
+1. A Schema Registry for a given environment
+1. Create Flink compute pool
+1. Create source databases, for example, a RDS service with a Postgresql instance  
+1. Create Debezium CDC Source connector for DB tables using terraform
+1. Create SQL database and tables into the select database (Postgresql): accounts, customers, transactions. We will use a script for that
+
+*This list will be updated while implementing this demonstration*
 
 ### Data Engineer
 
-1. [x] Create dbt project to manage statement with git, reflecting star model
-1. [ ] Deploy Flionk logic with SQLs from Confluent Cloud Workspace to dbt models, to `dbt run`
+The following steps are generic and may be supported by different tools:
 
-**Star model**: 
+1. Create dbt project to manage Flink statements using a git repository. One of the approach is to use the `star schema` (see note below)
+1. Develop Flink queries using Confluent Cloud Workspace cells
+1. Save query to file in git repository, transform for dbt
+1. Deploy Flink logic using dbt cli: `dbt run`
+
+*This list will be updated while implementing this demonstration*
+
+[**Star model**](http://jbcodeforce.github.io/flink-studies/cookbook/pm/?h=star+model#the-star-schema) is a multidimensional data model to organize data in a data warehouse. It is used to denormalize business data into dimensions and facts. The `fact` table sits at the center of the start schema. It records the what happened, as quantitative, measurable events. The `Dimension` tables (The "Context") surround the fact table. They provide the "who, what, where, when, and why".
 
 ### Application Developer
 
-1. [ ] Define contract for data / analytics, and the methodology to engage with Data engineers
-1. [ ] Maintain schema evolution with full transitivity
 
-## Infrastructure as code
+The following steps are generic and may be supported by different tools:
 
-The steps in this section are for SREs
+1. Define contract for data / analytics, and the methodology to engage with Data engineers as part of the microservice design
+1. Maintain schema evolution with full transitivity
+1. Integrate data in Kafka via Lightning query or snapshot queries.
 
-### Pre-requisites
+*This list will be updated while implementing this demonstration*
+
+## SRE's tasks Walking Through
+
+We propose two approches to define the environment and components of this demonstration, one using the Confluent Console or one using Terraform.
+
+### Confluent Console Walk Through
+
+We suppose the user has OrganizatonAdmin role to be able to create environment. 
+
+Pre-requisites:
+
+* Login to the console
+
+#### Create Confluent Cloud Environment
+
+1. From the home page, go to the environment page, and click on the `Add Cloud Environment` button on the top right part of the page.
+1. Enter name and select one of the governance package. As the demonstration scope is not about governance, use Essential
+
+    ![](./docs/images/ccloud/cc-env-1.png)
+
+#### Create Confluent Cloud Kafka Cluster
+
+Next step is to create a KafKa Cluster
+1. Enter name, and Cluster Type, which for demonstration will be standard.
+
+    ![](./docs/images/ccloud/cc-kafka-1.png)
+1. Select a Cloud Provider and a region, select a 99.9% SLA
+1. Launch the cluster using the right column 'Launch Cluster button`
+1. Create API Key and Secrets
+
+*As part of the essential governance, a schema registry is created once the Kafka Cluster is launched.*
+
+#### Create Confluent Cloud Flink Compute Pool
+
+#### AWS Resources
+
+We will not detail how to use the AWS Console to create RDS Postgresql instance and access VPC information. The [terraform section](#aws-resources-rds-postgresql) below describres how to automate the creation of those resources.
+
+It is important to get the following information to be able to create the Kafka Connector for change data capture.
+
+| Resources | |
+|-----| ---- |
+| | Region |
+| secrets_manager_secret_arn | Resource ref for AWS Secrets Manager| 
+| Public certificates | a .pem file to download |
+
+#### Populate some data into the source database
+
+We propose to use a tool to create the three tables and seed some data. The code is under [./scripts/db/](./scripts/db/)
+
+```bash
+cd scripts/db
+uv sync
+SECRET_ARN=....
+# Create tables and seed default data: 50 customers (~100 accounts, ~1 500 transactions)
+uv run python seed_data.py --secret-arn "$SECRET_ARN" --region us-west-2 --ssl-root-cert ~/.ssh/global-bundle.pem
+```
+
+
+#### Create Debezium CDC v2 Kafka Connector
+
+Once the database instance is created and has DNS server name and port number and access policies setup, we need to add the Kafka Connector. The figure below illustrates the components created:
+
+![](./docs/diagrams/kafka-connect.drawio.png)
+
+[See confluent Cloud product documentation](https://docs.confluent.io/cloud/current/connectors/cc-postgresql-cdc-source-v2-debezium/cc-postgresql-cdc-source-v2-debezium.html)
+
+
+1. Select the Kafka Cluster
+    ![](./docs/images/ccloud/cc-cdc-1.png)
+
+1. Select Connector Tab to land in the connectors home page:
+    ![](./docs/images/ccloud/cc-cdc-2.png)
+
+1. Add Connector, and select the Postgres CDC Source V2
+    ![](./docs/images/ccloud/cc-cdc-deb.png)
+
+1. Add topic information like the prefix to use to differentiate among other topic. Set the default number of partitions and cleanup policy
+
+    ![](./docs/images/ccloud/cdc-topic-cfg.png)
+
+1. Define how to access the Kafka cluster. Use an existing API Key
+
+    ![](./docs/images/ccloud/cdc-kafka-access.png)
+
+1. Define topic configuration
+    ![](./docs/images/ccloud/cdc-sr-avro.png)
+
+1. Launch the connector
+1. Verify created topics
+1. Verify Schema registry schemas
+
+### Terraform
+
+We assume for the current documentation that AWS will be used as cloud provider for the external resources
+
+#### Pre-requisites
 
 * Get Terraform cli
 * Get aws CLI
@@ -72,14 +175,14 @@ The steps in this section are for SREs
     ```
     brew install libpq
     ```
-* Login to AWS console, search for VPC to use
+* Login to AWS console, search for the VPC to use
     ```sh
     aws sso login --profile your-profile-name
     export AWS_PROFILE="your-profile-name"
     ```
 
 * Run: `terraform init` under IaC folder
-* Find you public IP address: [https://checkip.amazonaws.com](https://checkip.amazonaws.com)
+* Find you the public IP address of your machine: [https://checkip.amazonaws.com](https://checkip.amazonaws.com)
 * Modify terraform environment variables `terraform.tfvars` with:
 
 ```sh
@@ -87,9 +190,13 @@ db_allowed_cidr_blocks
 my_ip_addr
 ```
 
-### RDS Postgresql
+#### AWS Resources: RDS Postgresql
+
+For coverage of this end to end demonstration we are defining terraform files to create AWS resources. It is not mandatory to do so, if the focus is on data processing using Flink. The goal of preparing external OLTP database is to simulate data processing end-to-end from transaction to change data capture, to kafka topic. 
 
 The database is created in a public subnet of an existing VPC but the security group use the user ip address to define a rule 
+
+![](./docs/diagrams/aws-rds.drawio.png)
 
 The database has three main tables:
 
@@ -157,9 +264,9 @@ The database has three main tables:
 
 #### AWS RDS Postgresql
 
-The terraform under IaC/AWS creates the RDS Postgresql 17 instance, with DB subnet group within an existing VPC, security group policies to restrict traffic to PostgreSQL port 5432 within the existing VPC. The Ingress rule allow access to Postgres TCP port 5432 from VPC, client CIDRs, and Confluent Cloud egress.
+The terraform under `IaC/AWS` folder creates the RDS Postgresql 17 instance, with DB subnet group within an existing VPC, security group policies to restrict traffic to PostgreSQL on port 5432 within the existing VPC. The Ingress rules allow access to Postgres TCP port 5432 from VPC, client CIDRs, and Confluent Cloud egress IP addresses.
 
-RDS storage is encrypter with KMS Customer Managed Key and DB secrets. Database credentials are securely saved in AWS Secrets Manager
+RDS storage is encrypted with KMS Customer Managed Key and DB secrets. Database credentials are securely saved in AWS Secrets Manager.
 
 ```sh
 terraform plan
@@ -167,7 +274,7 @@ terraform apply
 terraform output
 ```
 
-The output gives us the 
+The output gives us the following:
 
 ```
 db_security_group_id = "sg-...."
@@ -183,19 +290,18 @@ vpc_id = "vpc-...."
 
 Once the database is up and running, we can get the public SSL certificate to download from the AWS Console.
 
-
-Then running the following will create the tables and seed test data:
+Then running the following will create the tables and the seed test data:
 
 ```sh
 uv run python seed_data.py --secret-arn "arn:aws:secretsmanager:u...." --ssl-root-cert ~/.ssh/global-bundle.pem
 ```
 
-#### Use psql to see the RDS
+#### Use psql to verify data in RDS
 
 * First get the DB password from the AWS secrets
 
 ```sh
-DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:us-west-2:829250931565:secret:c360-j9r-rds-credentials-9G055x --query SecretString --output text |jq -r .password)
+DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:us-west-2:.....:secret:c360-j9r-rds-credentials-9x --query SecretString --output text |jq -r .password)
 ```
 
 * Use this to connect via psql
@@ -207,7 +313,7 @@ PGPASSWORD=$DB_PASSWORD psql -h $RDSHOST -d c360db -U dbadmin sslmode=verify-ful
 ```sql
 --- see all the tables in your current database
 \dt
-
+SELECT * FROM public.accounts
 ```
 
 #### Some info
@@ -218,7 +324,7 @@ PGPASSWORD=$DB_PASSWORD psql -h $RDSHOST -d c360db -U dbadmin sslmode=verify-ful
 
 #### Local tests
 
-Under scripts/local-tests there is a script to start postgresql locally so we can test thre python code. Here are the steps
+Under the `scripts/local-tests` folder, there is a script to start postgresql locally so we can test thre python code. Here are the steps
 
 * Start local postgresql server:
     ```sh
@@ -286,11 +392,6 @@ Under scripts/local-tests there is a script to start postgresql locally so we ca
 #### Enhancement
 
 * RDS should be in private subnet with VPC private link set to Confluent Cloud
-
-### DB2 Community Edition EC2
-
-### Private network
-
 
 ## Flink Project Management
 
@@ -368,15 +469,5 @@ Under scripts/local-tests there is a script to start postgresql locally so we ca
 
 
 
-## Create Debezium CDC v2 Kafka Connector
-
-[See product documentation](https://docs.confluent.io/cloud/current/connectors/cc-postgresql-cdc-source-v2-debezium/cc-postgresql-cdc-source-v2-debezium.html)
-
-
-![](./docs/cdc-topic-cfg.png)
-
-![](./docs/cdc-kafka-access.png)
-
-![](./docs/cdc-sr-avro.png)
 
 
