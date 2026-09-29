@@ -289,6 +289,82 @@ Under scripts/local-tests there is a script to start postgresql locally so we ca
 ### Private network
 
 
+## Flink Project Management
+
+1. First create the pipeline fodler to manage the different Flink SQL statement, using the star model. This can be done manually or use tool from [flink-tools-for-agents](https://github.com/jbcodeforce/flink-tools-for-agents/tree/main/tools/dbt)
+    ```sh
+    uv run sl-dbt init ~/Code/stream_house_c360_demo
+    ```
+
+    Here is the expected structure
+    ```sh
+    stream_house_c360_demo
+    ├── docs
+    ├── IaC
+    ├── local-tests
+    ├── pipelines
+    ├── sl_dbt.yaml
+    └── tools
+    ```
+
+1. Add Data product named c360
+    ```sh
+    uv run sl-dbt add-data-product ~/Code/stream_house_c360_demo c360
+    ```
+
+    Here is the expected structure
+    ```sh
+    pipelines
+        ├── dbt_project.yml
+        ├── macros
+        ├── models
+        │   └── c360
+        │       ├── dimensions
+        │       ├── facts
+        │       └── sources
+        ├── pyproject.toml
+        ├── seeds
+        └── tests
+    ```
+
+1. Add one table as output of deduplicating customers raw data
+
+    ```sh
+     uv run sl-dbt add-table ~/Code/stream_house_c360_demo src_dedup_customers c360 --table-type  src
+    ```
+
+    ```sh
+    pipelines
+        ├── dbt_project.yml
+        ├── macros
+        ├── models
+        │   └── c360
+        │       ├── dimensions
+        │       ├── facts
+        │       ├── schema.yml
+        │       └── sources
+        │           ├── src_dedup_customers.sql
+        │           └── src_dedup_customers.yml
+        ├── pyproject.toml
+        ├── seeds
+        └── tests
+    ```
+
+1. Get the schema from the raw topic to process and automatically generate the source.yaml for dbt
+    ```sh
+    uv run  sl-dbt get-schema-existing-topic-to-dbt ~/Code/stream_house_c360_demo raw_customers
+    ```
+
+1. Continue to create the following flink statements to deduplicate, filter and transform raw CDC topics.
+
+| Source Table(s) | Folder Name | Sink Table |
+| ----------------| ------------ |-----------| 
+| | sources | src_dedup_accounts | 
+| | sources | src_dedup_customers | 
+| | sources | src_dedup_transactions |
+
+
+
 ## Create Debezium CDC v2 Kafka Connector
 
 [See product documentation](https://docs.confluent.io/cloud/current/connectors/cc-postgresql-cdc-source-v2-debezium/cc-postgresql-cdc-source-v2-debezium.html)
