@@ -126,7 +126,7 @@ customers
   last_name       VARCHAR(100)
   email           VARCHAR(255) UNIQUE
   phone           VARCHAR(30)
-  date_of_birth   DATE
+  date_of_birth   TIMESTAMPTZ
   gender          VARCHAR(20)
   address_*       VARCHAR
   country         VARCHAR(60)

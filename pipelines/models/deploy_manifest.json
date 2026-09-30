@@ -1,0 +1,27 @@
+{
+  "user_agent": "cc-sql-tools/0.1",
+  "groups": {
+    "pipeline": [
+      {
+        "name": "models-c360-sources-pipeline-src-dedup-accounts",
+        "file": "c360/sources/src_dedup_accounts.sql"
+      },
+      {
+        "name": "models-c360-sources-pipeline-src-dedup-customers",
+        "file": "c360/sources/src_dedup_customers.sql"
+      },
+      {
+        "name": "models-c360-sources-pipeline-src-dedup-transactions",
+        "file": "c360/sources/src_dedup_transactions.sql"
+      }
+    ]
+  },
+  "deploy_all": [
+    "pipeline"
+  ],
+  "undeploy_all": [
+    "pipeline"
+  ],
+  "drop_tables": [],
+  "drop_statement_prefix": "models-drop"
+}

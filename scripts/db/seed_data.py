@@ -27,20 +27,19 @@ Usage
 """
 
 import argparse
-import json
 import logging
-import os
 import random
 import sys
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-import boto3
 import psycopg2
 import psycopg2.extras
-from botocore.exceptions import ClientError
 from faker import Faker
+
+from create_tables import create_schema
+from db_utils import add_db_arguments, build_conn_params, validate_db_args
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -103,45 +102,6 @@ MERCHANT_NAMES_BY_CATEGORY = {
 # Helpers
 # ---------------------------------------------------------------------------
 
-def fetch_secret(secret_arn: str, region: str) -> dict:
-    client = boto3.client("secretsmanager", region_name=region)
-    try:
-        resp = client.get_secret_value(SecretId=secret_arn)
-    except ClientError as exc:
-        log.error("Failed to retrieve secret %s: %s", secret_arn, exc)
-        sys.exit(1)
-    return json.loads(resp["SecretString"])
-
-
-def build_conn_params(args: argparse.Namespace) -> dict:
-    if args.secret_arn:
-        log.info("Loading connection details from Secrets Manager: %s", args.secret_arn)
-        secret = fetch_secret(args.secret_arn, args.region)
-        params = {
-            "host": secret["host"],
-            "port": int(secret.get("port", 5432)),
-            "dbname": secret["database"],
-            "user": secret["username"],
-            "password": secret["password"],
-            "sslmode": "verify-full",
-            "sslrootcert": args.ssl_root_cert,
-        }
-        return params
-    params = {
-        "host": args.host,
-        "port": args.port,
-        "dbname": args.dbname,
-        "user": args.username,
-        "password": args.password,
-        "sslmode": args.sslmode,
-    }
-    if args.sslmode not in ("disable", "allow"):
-        params["sslrootcert"] = args.ssl_root_cert
-    
-    print(params)
-    return params
-
-
 def weighted_choice(choices: list, weights: list):
     return random.choices(choices, weights=weights, k=1)[0]
 
@@ -164,13 +124,14 @@ def random_past_datetime(days_back: int = 730) -> datetime:
 def generate_customer() -> dict:
     dob = fake.date_of_birth(minimum_age=18, maximum_age=80)
     since = random_date_between(date(2010, 1, 1), date.today())
+    dob_dt = datetime.combine(dob, datetime.min.time(), tzinfo=timezone.utc)
     return {
         "customer_id": str(uuid.uuid4()),
         "first_name": fake.first_name(),
         "last_name": fake.last_name(),
         "email": fake.unique.email(),
         "phone": fake.phone_number()[:30],
-        "date_of_birth": dob,
+        "date_of_birth": dob_dt,
         "gender": weighted_choice(GENDERS, GENDER_WEIGHTS),
         "address_line1": fake.street_address(),
         "address_line2": fake.secondary_address() if random.random() < 0.3 else None,
@@ -366,22 +327,7 @@ def seed(conn, num_customers: int, truncate: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Seed C360 PostgreSQL schema with synthetic data")
-    # Secrets Manager (preferred)
-    parser.add_argument("--secret-arn", help="AWS Secrets Manager secret ARN (preferred)")
-    parser.add_argument("--region", default="us-west-2", help="AWS region (default: us-west-2)")
-    # Manual overrides
-    parser.add_argument("--host", default="localhost")
-    parser.add_argument("--port", type=int, default=5432)
-    parser.add_argument("--dbname", default="c360db")
-    parser.add_argument("--username", default="dbadmin")
-    parser.add_argument("--password", default=None)
-    parser.add_argument("--sslmode", default="require")
-    parser.add_argument(
-        "--ssl-root-cert",
-        default=os.path.expanduser("~/.ssh/global-bundle.pem"),
-        help="Path to the CA bundle for SSL verification "
-             "(default: ~/.ssh/global-bundle.pem)",
-    )
+    add_db_arguments(parser)
     # Seeding options
     parser.add_argument("--customers", type=int, default=50,
                         help="Number of customer records to generate (default: 50)")
@@ -389,8 +335,7 @@ def main() -> None:
                         help="Truncate existing data before seeding (use with caution)")
     args = parser.parse_args()
 
-    if not args.secret_arn and args.password is None:
-        parser.error("Provide --secret-arn (recommended) or --password for manual connection.")
+    validate_db_args(parser, args)
 
     conn_params = build_conn_params(args)
     log.info("Connecting to %s:%s/%s as %s …",
@@ -398,6 +343,7 @@ def main() -> None:
              conn_params["dbname"], conn_params["user"])
 
     with psycopg2.connect(**conn_params) as conn:
+        create_schema(conn)
         seed(conn, num_customers=args.customers, truncate=args.truncate)
 
 

@@ -17,7 +17,7 @@ sources:
     - name: phone
       data_type: string
     - name: date_of_birth
-      data_type: int
+      data_type: string
     - name: gender
       data_type: string
     - name: address_line1
@@ -42,3 +42,5 @@ sources:
       data_type: string
     - name: updated_at
       data_type: string
+  - name: cdc.public.accounts
+  - name: cdc.public.transactions

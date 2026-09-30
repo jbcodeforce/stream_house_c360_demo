@@ -251,7 +251,7 @@ The database has three main tables:
         last_name       VARCHAR(100)    NOT NULL,
         email           VARCHAR(255)    NOT NULL UNIQUE,
         phone           VARCHAR(30),
-        date_of_birth   DATE,
+        date_of_birth   TIMESTAMPTZ,
         gender          VARCHAR(20),
         address_line1   VARCHAR(255),
         address_line2   VARCHAR(255),
@@ -506,7 +506,22 @@ We want to implement the following pipelines:
         ```sql
         SELECT * FROM `j9r-env`.`j9r-kafka`.`cdc.public.customers` where status = 'ACTIVE';
         ```
+    1. Because the changelog mode is retract or upsert then the topic, there is no duplicate to the current customers, accounts and transactions, the following query helps to validate that
+        ```sql
+         with deduped_customer as (
+            SELECT 
+                    customer_id,
+                FROM `cdc.public.customers`
+            ),
+            numdup as (SELECT
+                customer_id,
+                count(*) as num_records
+            FROM deduped_customer
+            group by customer_id)
+            select * from numdup where num_records > 1
+        ```
 
+        ![](./docs/images/flink/no_duplicate.png)
 
 1. Get the schema from the raw topic to process and automatically generate the source.yaml for dbt
     ```sh
@@ -524,6 +539,10 @@ We want to implement the following pipelines:
 | dim_customers, src_transactions | facts | fct_c360_profiles |
 
 
+1. Undeploy and delete Flink create topics: as dbt does not support undeploying, we need another tool to manage the drop table. The [flink-tools-for-agents](https://github.com/jbcodeforce/flink-tools-for-agents/tree/main/tools/flink) includes tools to define a manifest of metadata and then perform deplooy, undeploy and drop tables. 
+    ```sh
+    uv run 
+    ```
 
 
 

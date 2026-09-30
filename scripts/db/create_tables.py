@@ -20,14 +20,12 @@ Usage
 """
 
 import argparse
-import json
 import logging
-import os
 import sys
 
-import boto3
 import psycopg2
-from botocore.exceptions import ClientError
+
+from db_utils import add_db_arguments, build_conn_params, validate_db_args
 
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -51,7 +49,7 @@ DDL_STATEMENTS = [
         last_name       VARCHAR(100)    NOT NULL,
         email           VARCHAR(255)    NOT NULL UNIQUE,
         phone           VARCHAR(30),
-        date_of_birth   DATE,
+        date_of_birth   TIMESTAMPTZ,
         gender          VARCHAR(20),
         address_line1   VARCHAR(255),
         address_line2   VARCHAR(255),
@@ -172,48 +170,23 @@ END $$;
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Schema creation helper
 # ---------------------------------------------------------------------------
 
-def fetch_secret(secret_arn: str, region: str) -> dict:
-    """Retrieve and parse a JSON secret from AWS Secrets Manager."""
-    client = boto3.client("secretsmanager", region_name=region)
-    try:
-        resp = client.get_secret_value(SecretId=secret_arn)
-    except ClientError as exc:
-        log.error("Failed to retrieve secret %s: %s", secret_arn, exc)
-        sys.exit(1)
-    return json.loads(resp["SecretString"])
+def create_schema(conn) -> None:
+    """Execute DDL statements and create the CDC publication if they do not exist."""
+    conn.autocommit = False
+    with conn.cursor() as cur:
+        for stmt in DDL_STATEMENTS:
+            cur.execute(stmt)
+            log.info("✓ Executed DDL statement")
 
+        log.info("Creating CDC publication c360_cdc_publication …")
+        cur.execute(CDC_PUBLICATION_SQL)
 
-def build_conn_params(args: argparse.Namespace) -> dict:
-    """Return psycopg2 connection kwargs from CLI args or Secrets Manager."""
-    if args.secret_arn:
-        log.info("Loading connection details from Secrets Manager: %s", args.secret_arn)
-        secret = fetch_secret(args.secret_arn, args.region)
-        print(secret)
-        params = {
-            "host": secret["host"],
-            "port": int(secret.get("port", 5432)),
-            "dbname": secret["database"],
-            "user": secret["username"],
-            "password": secret["password"],
-            "sslmode": "verify-full",
-            "sslrootcert": args.ssl_root_cert,
-        }
-        return params
-    # Manual override path (local dev / testing)
-    params = {
-        "host": args.host,
-        "port": args.port,
-        "dbname": args.dbname,
-        "user": args.username,
-        "password": args.password,
-        "sslmode": args.sslmode,
-    }
-    if args.sslmode not in ("disable", "allow"):
-        params["sslrootcert"] = args.ssl_root_cert
-    return params
+    conn.commit()
+    log.info("✅ Schema created successfully (customers, accounts, transactions).")
+    log.info("   CDC publication 'c360_cdc_publication' is ready for Debezium / Confluent Connect.")
 
 
 # ---------------------------------------------------------------------------
@@ -222,45 +195,17 @@ def build_conn_params(args: argparse.Namespace) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Create C360 schema on PostgreSQL RDS")
-    # Secrets Manager (preferred)
-    parser.add_argument("--secret-arn", help="AWS Secrets Manager secret ARN (preferred)")
-    parser.add_argument("--region", default="us-west-2", help="AWS region (default: us-west-2)")
-    # Manual overrides
-    parser.add_argument("--host", default="localhost")
-    parser.add_argument("--port", type=int, default=5432)
-    parser.add_argument("--dbname", default="c360db")
-    parser.add_argument("--username", default="dbadmin")
-    parser.add_argument("--password", default=None)
-    parser.add_argument("--sslmode", default="require")
-    parser.add_argument(
-        "--ssl-root-cert",
-        default=os.path.expanduser("~/.ssh/global-bundle.pem"),
-        help="Path to the CA bundle for SSL verification "
-             "(default: ~/.ssh/global-bundle.pem)",
-    )
+    add_db_arguments(parser)
     args = parser.parse_args()
 
-    if not args.secret_arn and args.password is None:
-        parser.error("Provide --secret-arn (recommended) or --password for manual connection.")
+    validate_db_args(parser, args)
 
     conn_params = build_conn_params(args)
     log.info("Connecting to %s:%s/%s as %s …",
              conn_params["host"], conn_params["port"],
              conn_params["dbname"], conn_params["user"])
     with psycopg2.connect(**conn_params) as conn:
-        conn.autocommit = False
-        with conn.cursor() as cur:
-            for stmt in DDL_STATEMENTS:
-                cur.execute(stmt)
-                log.info("✓ Executed DDL statement")
-
-            log.info("Creating CDC publication c360_cdc_publication …")
-            cur.execute(CDC_PUBLICATION_SQL)
-
-        conn.commit()
-
-    log.info("✅ Schema created successfully (customers, accounts, transactions).")
-    log.info("   CDC publication 'c360_cdc_publication' is ready for Debezium / Confluent Connect.")
+        create_schema(conn)
 
 
 if __name__ == "__main__":
