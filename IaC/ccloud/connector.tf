@@ -4,29 +4,31 @@
 
 resource "confluent_connector" "debezium_postgres" {
   environment {
-    id = data.confluent_environment.main.id
+    id = confluent_environment.env.id
   }
 
   kafka_cluster {
-    id = data.confluent_kafka_cluster.main.id
+    id = confluent_kafka_cluster.kcl.id
   }
 
   # Sensitive config is stored separately so Terraform keeps the password
   # out of the plan diff and marks the block as sensitive in state.
   config_sensitive = {
     "database.password" = local.rds_password
-    "kafka.api.secret"  = var.confluent_cloud_api_secret
+    "kafka.api.secret"  = confluent_api_key.kcl-kafka-api-key.secret
   }
 
   # All non-sensitive connector properties
   config_nonsensitive = {
     # ── Connector identity ──────────────────────────────────────────────────
-    "connector.class" = "PostgresDebeziumSourceV2"
+    "connector.class" = "PostgresCdcSourceV2"
     "name"            = var.connector_name
 
     # ── Kafka authentication ─────────────────────────────────────────────────
+    # Must be the cluster-scoped key (paired with its secret in config_sensitive),
+    # not the org-level Cloud API key used for the Terraform provider.
     "kafka.auth.mode" = "KAFKA_API_KEY"
-    "kafka.api.key"   = var.confluent_cloud_api_key
+    "kafka.api.key"   = confluent_api_key.kcl-kafka-api-key.id
 
     # ── Database connection ──────────────────────────────────────────────────
     "database.hostname" = local.rds_host
@@ -53,7 +55,10 @@ resource "confluent_connector" "debezium_postgres" {
 
     # ── Kafka topic routing ──────────────────────────────────────────────────
     # Topics will be: c360.public.customers, c360.public.accounts, c360.public.transactions
+    # topic.prefix is what actually names the output topics for V2 connectors;
+    # database.server.name is the separate Debezium logical server name.
     "database.server.name" = var.kafka_topic_prefix
+    "topic.prefix"          = var.kafka_topic_prefix
 
     # ── Serialization ────────────────────────────────────────────────────────
     "output.data.format" = "AVRO"

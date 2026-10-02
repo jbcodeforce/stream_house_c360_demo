@@ -18,6 +18,11 @@ variable "confluent_cloud_api_secret" {
 ################################################################################
 # AWS Configuration
 ################################################################################
+variable "cloud_provider" {
+ type        = string
+ description = "region for thge cloud provider"
+ default     = "AWS"
+}
 
 variable "aws_region_primary" {
   type        = string
@@ -25,18 +30,15 @@ variable "aws_region_primary" {
   default     = "us-west-2"
 }
 
-################################################################################
-# Confluent Cloud Resource References
-################################################################################
-
-variable "confluent_environment_id" {
+variable "prefix" {
   type        = string
-  description = "ID of the existing Confluent Cloud environment (e.g. env-abc123)"
+  default     = "j9r-jtbd1"
+  description = "prefix for environment" 
 }
 
-variable "confluent_kafka_cluster_id" {
+variable "cc_sa_env_mgr" {
   type        = string
-  description = "ID of the existing Confluent Cloud Kafka cluster (e.g. lkc-abc123)"
+  description = "Existing Confluent Cloud service account ID used as environment manager"
 }
 
 ################################################################################

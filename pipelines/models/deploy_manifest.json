@@ -22,6 +22,8 @@
   "undeploy_all": [
     "pipeline"
   ],
-  "drop_tables": [],
+  "drop_tables": [
+    
+  ],
   "drop_statement_prefix": "models-drop"
 }

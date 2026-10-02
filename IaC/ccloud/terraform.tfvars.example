@@ -1,7 +1,8 @@
 # terraform.tfvars.example
 # Copy to terraform.tfvars and fill in real values.
 # Do NOT commit terraform.tfvars to version control.
-
+# Confluent Cloud service account with environment management role
+cc_sa_env_mgr = "REPLACE"
 # ── Confluent Cloud credentials ────────────────────────────────────────────────
 # Obtain from: Confluent Cloud Console → API Keys
 confluent_cloud_api_key    = "REPLACE_WITH_API_KEY"
@@ -9,10 +10,10 @@ confluent_cloud_api_secret = "REPLACE_WITH_API_SECRET"
 
 # ── Existing Confluent Cloud resources ─────────────────────────────────────────
 # Confluent Cloud Console → Environments → select environment → copy ID (env-...)
-confluent_environment_id = "env-XXXXXX"
+#confluent_environment_id = "env-XXXXXX"
 
 # Confluent Cloud Console → select cluster → Settings → copy Cluster ID (lkc-...)
-confluent_kafka_cluster_id = "lkc-XXXXXX"
+#confluent_kafka_cluster_id = "lkc-XXXXXX"
 
 # ── AWS configuration ──────────────────────────────────────────────────────────
 aws_region_primary = "us-west-2"

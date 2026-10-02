@@ -535,13 +535,14 @@ We want to implement the following pipelines:
 | cdc.public.accounts | sources | src_accounts | 
 | cdc.public.customers | sources | src_customers | 
 | cdc.public.transactions| sources | src_transactions |
-|  src_dedup_customers, src_dedup_accounts | dimension |  dim_customers|
+| src_dedup_customers, src_dedup_accounts | dimension |  dim_customers|
 | dim_customers, src_transactions | facts | fct_c360_profiles |
 
 
 1. Undeploy and delete Flink create topics: as dbt does not support undeploying, we need another tool to manage the drop table. The [flink-tools-for-agents](https://github.com/jbcodeforce/flink-tools-for-agents/tree/main/tools/flink) includes tools to define a manifest of metadata and then perform deplooy, undeploy and drop tables. 
     ```sh
-    uv run 
+    cd flink-tools-for-agents 
+    uv run generate-manifest --sql-dir ../stream_house_c360_demo/pipelines/models 
     ```
 
 
