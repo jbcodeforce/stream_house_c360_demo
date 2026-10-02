@@ -61,20 +61,8 @@ variable "connector_name" {
   default     = "c360-debezium-postgres-source"
 }
 
-variable "cdc_publication_name" {
-  type        = string
-  description = "PostgreSQL logical replication publication name (must already exist on the RDS instance)"
-  default     = "c360_cdc_publication"
-}
-
-variable "cdc_slot_name" {
-  type        = string
-  description = "PostgreSQL replication slot name the connector will create and use"
-  default     = "c360_debezium_slot"
-}
-
 variable "kafka_topic_prefix" {
   type        = string
   description = "Prefix for Kafka topic names produced by the connector (topics will be <prefix>.public.<table>)"
-  default     = "c360"
+  default     = "cdc"
 }

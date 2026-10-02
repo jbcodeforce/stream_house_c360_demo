@@ -30,6 +30,15 @@ resource "confluent_connector" "debezium_postgres" {
     "kafka.auth.mode" = "KAFKA_API_KEY"
     "kafka.api.key"   = confluent_api_key.kcl-kafka-api-key.id
 
+    # Required by the managed connector runtime to locate and authenticate
+    # the Kafka cluster. endpoint comes from the cluster bootstrap_endpoint
+    # (which already carries the SASL_SSL:// scheme); region and cloud
+    # are derived from the variables already used for cluster provisioning.
+    "kafka.endpoint"    = confluent_kafka_cluster.kcl.bootstrap_endpoint
+    "kafka.region"      = var.aws_region_primary
+    "cloud.environment" = "prod"
+    "cloud.provider"    = lower(var.cloud_provider)
+
     # ── Database connection ──────────────────────────────────────────────────
     "database.hostname" = local.rds_host
     "database.port"     = local.rds_port
@@ -40,25 +49,14 @@ resource "confluent_connector" "debezium_postgres" {
     "database.sslmode" = "require"
 
     # ── CDC source configuration ─────────────────────────────────────────────
-    # Logical decoding plugin — pgoutput is native to PostgreSQL 10+ and
-    # the only plugin supported on RDS without installing extensions.
-    "plugin.name" = "pgoutput"
-
-    # Publication created by scripts/db/create_tables.py
-    "publication.name" = var.cdc_publication_name
-
-    # Replication slot the connector will create and manage
-    "slot.name" = var.cdc_slot_name
-
     # Tables to capture (schema.table format)
-    "table.include.list" = "public.customers,public.accounts,public.transactions"
+    # Order matches the deployed connector config.
+    "table.include.list" = "public.accounts,public.customers,public.transactions"
 
     # ── Kafka topic routing ──────────────────────────────────────────────────
-    # Topics will be: c360.public.customers, c360.public.accounts, c360.public.transactions
-    # topic.prefix is what actually names the output topics for V2 connectors;
-    # database.server.name is the separate Debezium logical server name.
-    "database.server.name" = var.kafka_topic_prefix
-    "topic.prefix"          = var.kafka_topic_prefix
+    # Topics will be: <prefix>.public.accounts, <prefix>.public.customers, etc.
+    # The deployed connector uses "cdc" as the prefix; that is the default.
+    "topic.prefix" = var.kafka_topic_prefix
 
     # ── Serialization ────────────────────────────────────────────────────────
     "output.data.format" = "AVRO"

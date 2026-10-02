@@ -40,8 +40,8 @@ resource "confluent_role_binding" "kafka-mgr-kcluster-admin" {
 # ------------------------------------------------------
 resource "confluent_api_key" "kcl-kafka-api-key" {
   # display_name = "${var.prefix}-kafka-api-key"
-  display_name = "standard-kafka-api-key"
-  description  = "Kafka API Key for 'standard' cluster"
+  display_name = "${var.prefix}-kafka-api-key"
+  description  = "Kafka API Key for 'kcl' cluster"
   owner {
     id          = confluent_service_account.kafka_mgr.id
     api_version = confluent_service_account.kafka_mgr.api_version

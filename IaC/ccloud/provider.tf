@@ -4,7 +4,7 @@ terraform {
   required_providers {
     confluent = {
       source  = "confluentinc/confluent"
-      version = "~> 2.86"
+      version = "~> 2.88.0"
     }
     random = {
       source  = "hashicorp/random"
@@ -18,6 +18,7 @@ terraform {
 }
 
 provider "aws" {
+  region = var.aws_region_primary
 }
 
 provider "confluent" {

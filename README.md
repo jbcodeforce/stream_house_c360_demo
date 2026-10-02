@@ -326,12 +326,14 @@ uv run python seed_data.py --secret-arn "arn:aws:secretsmanager:u...." --ssl-roo
 * First get the DB password from the AWS secrets
 
 ```sh
-DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:us-west-2:.....:secret:c360-j9r-rds-credentials-9x --query SecretString --output text |jq -r .password)
+export RDSHOST="c360-j9r-postgres.c.....rds.amazonaws.com"
+DB_PASSWORD=$(aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:us-west-2:.....:secret:c360-j9r-.... --query SecretString --output text |jq -r .password)
 ```
 
 * Use this to connect via psql
 ```sh
-PGPASSWORD=$DB_PASSWORD psql -h $RDSHOST -d c360db -U dbadmin sslmode=verify-full sslrootcert=~/.ssh/global-bundle.pem 
+PGPASSWORD=$DB_PASSWORD psql -h $RDSHOST -d c360db -U dbadmin
+
 ```
 
 * In psql session
