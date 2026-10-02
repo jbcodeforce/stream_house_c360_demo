@@ -25,6 +25,11 @@ The goal is to demonstrate synchronize a change in business state everywhere it 
 * External catalogs are in sync with Tableflow catalog
 * Other queries are done by Data engineer on data at rest.
 
+### Backend Architecture
+
+![](./docs/diagrams/backend.drawio.png)
+
+
 ## Actors
 
 We can consider three actors

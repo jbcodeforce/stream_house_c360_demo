@@ -2,3 +2,8 @@
 **/.terraform/
 **/.terraform.loc*
 **/terraform.tfstate*
+
+**/.venv/
+# Local environment files (contain credentials — never commit)
+**/.env
+**/.env.local
