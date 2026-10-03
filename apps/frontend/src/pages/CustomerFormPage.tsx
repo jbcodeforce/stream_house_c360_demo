@@ -30,6 +30,13 @@ const TEXT_FIELDS: [keyof CustomerCreate, string, string?][] = [
   ['status', 'Status'],
 ]
 
+// Fields rendered as <input type="date">, which only accepts yyyy-MM-dd.
+// The backend may serialize these as full datetimes (e.g. date_of_birth),
+// so loaded values are trimmed to the date portion.
+const DATE_FIELDS = new Set<keyof CustomerCreate>(
+  TEXT_FIELDS.filter(([, , type]) => type === 'date').map(([key]) => key),
+)
+
 function toPayload(form: FormState): CustomerCreate {
   const out = {} as Record<string, string | null>
   for (const key of Object.keys(form) as (keyof FormState)[]) {
@@ -57,7 +64,12 @@ export default function CustomerFormPage() {
         const next = { ...EMPTY }
         for (const key of Object.keys(EMPTY) as (keyof FormState)[]) {
           const v = c[key]
-          next[key] = v == null ? '' : String(v)
+          if (v == null) {
+            next[key] = ''
+          } else {
+            const s = String(v)
+            next[key] = DATE_FIELDS.has(key) ? s.slice(0, 10) : s
+          }
         }
         setForm(next)
       })

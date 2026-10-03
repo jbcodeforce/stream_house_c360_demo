@@ -41,6 +41,17 @@ describe('CustomerFormPage', () => {
     expect(payload.phone).toBeNull()
   })
 
+  it('normalizes a datetime date_of_birth to yyyy-MM-dd for the date input', async () => {
+    vi.spyOn(api, 'getCustomer').mockResolvedValue({
+      customer_id: '1', first_name: 'Ada', last_name: 'Lovelace', email: 'ada@x.io',
+      date_of_birth: '1985-03-12T00:00:00+00:00',
+      country: 'US', customer_since: '2020-01-01', created_at: '', updated_at: '',
+    } as never)
+    renderAt('/customers/1/edit')
+    const dob = await screen.findByLabelText(/date of birth/i)
+    expect(dob).toHaveValue('1985-03-12')
+  })
+
   it('loads an existing customer and updates via PUT in edit mode', async () => {
     vi.spyOn(api, 'getCustomer').mockResolvedValue({
       customer_id: '1', first_name: 'Ada', last_name: 'Lovelace', email: 'ada@x.io',
