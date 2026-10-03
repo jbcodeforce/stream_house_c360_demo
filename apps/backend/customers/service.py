@@ -8,17 +8,44 @@ Routes each operation to the correct sink based on ``settings.SINK``:
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+import config_store
 from config import settings
 from customers import db_sink, inventory, kafka_producer
 from customers.models import Customer, CustomerCreate, CustomerUpdate
 
+logger = logging.getLogger("c360.service")
+
+
+def _maybe_emit(op: str, customer: Customer) -> None:
+    """Best-effort Kafka emission for the postgres path, gated by config.
+
+    A producer failure is logged and swallowed — Postgres is the source of
+    truth and the DB operation must not fail because Kafka is unavailable.
+    """
+    if not config_store.get_config().kafka_produce_enabled:
+        return
+    try:
+        if op == "C":
+            kafka_producer.produce_create(customer)
+        elif op == "U":
+            kafka_producer.produce_update(customer)
+        elif op == "D":
+            kafka_producer.produce_delete(customer)
+    except Exception:
+        logger.warning(
+            "Kafka emit failed (op=%s, id=%s)", op, customer.customer_id, exc_info=True
+        )
+
 
 def create(data: CustomerCreate) -> Customer:
     if settings.SINK == "postgres":
-        return db_sink.create(data)
+        customer = db_sink.create(data)
+        _maybe_emit("C", customer)
+        return customer
 
     # kafka path: generate server-side fields, persist to CSV, produce event
     now = datetime.now(tz=timezone.utc)
@@ -35,7 +62,10 @@ def create(data: CustomerCreate) -> Customer:
 
 def update(customer_id: UUID, data: CustomerUpdate) -> Customer | None:
     if settings.SINK == "postgres":
-        return db_sink.update(customer_id, data)
+        customer = db_sink.update(customer_id, data)
+        if customer is not None:
+            _maybe_emit("U", customer)
+        return customer
 
     # kafka path: merge non-None fields onto the cached customer
     existing = inventory.get_by_id(customer_id)
@@ -65,7 +95,11 @@ def list_all() -> list[Customer]:
 
 def delete_by_id(customer_id: UUID) -> bool:
     if settings.SINK == "postgres":
-        return db_sink.delete_by_id(customer_id)
+        customer = db_sink.get_by_id(customer_id)
+        deleted = db_sink.delete_by_id(customer_id)
+        if deleted and customer is not None:
+            _maybe_emit("D", customer)
+        return deleted
     # kafka path: look up the customer first so we can produce a tombstone
     existing = inventory.get_by_id(customer_id)
     if existing is None:
