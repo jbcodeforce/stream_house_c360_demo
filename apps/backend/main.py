@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.config_resource import router as config_router
 from api.customer_resource import router as customers_router
 from config import settings
 from customers import db_sink, inventory
@@ -36,6 +37,7 @@ app.add_middleware(
 )
 
 app.include_router(customers_router, prefix="/api/v1")
+app.include_router(config_router, prefix="/api/v1")
 
 
 @app.get("/health")
