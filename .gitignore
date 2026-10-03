@@ -7,3 +7,6 @@
 # Local environment files (contain credentials — never commit)
 **/.env
 **/.env.local
+
+# Superpowers SDD scratch workspace
+.superpowers/
