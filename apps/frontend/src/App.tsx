@@ -4,6 +4,7 @@ import PlaceholderPage from './pages/PlaceholderPage'
 import CustomersPage from './pages/CustomersPage'
 import CustomerDetailPage from './pages/CustomerDetailPage'
 import CustomerFormPage from './pages/CustomerFormPage'
+import ConfigPage from './pages/ConfigPage'
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/customers/:id/edit" element={<CustomerFormPage />} />
         <Route path="/accounts" element={<PlaceholderPage title="Accounts" />} />
         <Route path="/transactions" element={<PlaceholderPage title="Transactions" />} />
+        <Route path="/settings" element={<ConfigPage />} />
       </Route>
     </Routes>
   )
