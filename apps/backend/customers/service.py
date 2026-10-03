@@ -19,22 +19,27 @@ from customers.models import Customer, CustomerCreate, CustomerUpdate
 
 logger = logging.getLogger("c360.service")
 
+# Bound the dual-write flush so a reachable Schema Registry with an
+# unreachable broker cannot stall a customer request for minutes.
+_EMIT_FLUSH_TIMEOUT = 5.0
+
 
 def _maybe_emit(op: str, customer: Customer) -> None:
     """Best-effort Kafka emission for the postgres path, gated by config.
 
     A producer failure is logged and swallowed — Postgres is the source of
-    truth and the DB operation must not fail because Kafka is unavailable.
+    truth and the DB operation must not fail (or hang) because Kafka is
+    unavailable, so emission uses a bounded flush timeout.
     """
     if not config_store.get_config().kafka_produce_enabled:
         return
     try:
         if op == "C":
-            kafka_producer.produce_create(customer)
+            kafka_producer.produce_create(customer, flush_timeout=_EMIT_FLUSH_TIMEOUT)
         elif op == "U":
-            kafka_producer.produce_update(customer)
+            kafka_producer.produce_update(customer, flush_timeout=_EMIT_FLUSH_TIMEOUT)
         elif op == "D":
-            kafka_producer.produce_delete(customer)
+            kafka_producer.produce_delete(customer, flush_timeout=_EMIT_FLUSH_TIMEOUT)
     except Exception:
         logger.warning(
             "Kafka emit failed (op=%s, id=%s)", op, customer.customer_id, exc_info=True

@@ -12,6 +12,7 @@ downloaded directly from the Schema Registry.
 
 from __future__ import annotations
 
+import logging
 import time
 from datetime import date, timezone
 from pathlib import Path
@@ -159,7 +160,15 @@ def _envelope_to_dict(envelope: dict, ctx) -> dict:  # noqa: ANN001
 # Module-level lazy producer
 # ---------------------------------------------------------------------------
 
+logger = logging.getLogger("c360.kafka_producer")
+
 _producer: SerializingProducer | None = None
+
+
+def _on_delivery(err, msg) -> None:  # noqa: ANN001 — confluent callback signature
+    """Delivery-report callback: log failures so they are never silent."""
+    if err is not None:
+        logger.warning("Kafka delivery failed: %s", err)
 
 
 def init_producer() -> SerializingProducer:
@@ -201,34 +210,39 @@ def _get_producer() -> SerializingProducer:
 # Public API
 # ---------------------------------------------------------------------------
 
-def produce_create(customer: Customer) -> None:
+def _produce(customer: Customer, op: str, flush_timeout: float | None = None) -> None:
+    """Produce a Debezium change event and flush.
+
+    ``flush_timeout`` bounds the flush so a reachable Schema Registry with an
+    unreachable broker cannot block the caller indefinitely (librdkafka's
+    default message timeout is 5 minutes). When ``None`` the flush is
+    unbounded, preserving the SINK=kafka path's at-least-once semantics.
+    """
+    producer = _get_producer()
+    producer.produce(
+        topic=settings.KAFKA_TOPIC_CUSTOMERS,
+        key=str(customer.customer_id),
+        value=_build_envelope(customer, op),
+        on_delivery=_on_delivery,
+    )
+    remaining = producer.flush() if flush_timeout is None else producer.flush(flush_timeout)
+    if remaining:
+        logger.warning(
+            "Kafka flush left %s message(s) unconfirmed (op=%s, id=%s)",
+            remaining, op, customer.customer_id,
+        )
+
+
+def produce_create(customer: Customer, flush_timeout: float | None = None) -> None:
     """Produce a Debezium create event (op="c") to the Kafka topic."""
-    producer = _get_producer()
-    producer.produce(
-        topic=settings.KAFKA_TOPIC_CUSTOMERS,
-        key=str(customer.customer_id),
-        value=_build_envelope(customer, _OP_CREATE),
-    )
-    producer.flush()
+    _produce(customer, _OP_CREATE, flush_timeout)
 
 
-def produce_update(customer: Customer) -> None:
+def produce_update(customer: Customer, flush_timeout: float | None = None) -> None:
     """Produce a Debezium update event (op="u") to the Kafka topic."""
-    producer = _get_producer()
-    producer.produce(
-        topic=settings.KAFKA_TOPIC_CUSTOMERS,
-        key=str(customer.customer_id),
-        value=_build_envelope(customer, _OP_UPDATE),
-    )
-    producer.flush()
+    _produce(customer, _OP_UPDATE, flush_timeout)
 
 
-def produce_delete(customer: Customer) -> None:
+def produce_delete(customer: Customer, flush_timeout: float | None = None) -> None:
     """Produce a Debezium delete event (op="d") to the Kafka topic."""
-    producer = _get_producer()
-    producer.produce(
-        topic=settings.KAFKA_TOPIC_CUSTOMERS,
-        key=str(customer.customer_id),
-        value=_build_envelope(customer, _OP_DELETE),
-    )
-    producer.flush()
+    _produce(customer, _OP_DELETE, flush_timeout)

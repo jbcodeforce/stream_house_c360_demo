@@ -52,7 +52,8 @@ def test_create_emits_when_enabled(pg, monkeypatch):
     pg.db_sink.create.return_value = c
     _enable(monkeypatch, True)
     pg.create(CustomerCreate(first_name="Ada", last_name="L", email="a@b.c"))
-    pg.kafka_producer.produce_create.assert_called_once_with(c)
+    pg.kafka_producer.produce_create.assert_called_once()
+    assert pg.kafka_producer.produce_create.call_args.args[0] is c
 
 
 def test_create_does_not_emit_when_disabled(pg, monkeypatch):
@@ -76,7 +77,19 @@ def test_delete_emits_full_payload_when_enabled(pg, monkeypatch):
     pg.db_sink.delete_by_id.return_value = True
     _enable(monkeypatch, True)
     assert pg.delete_by_id(c.customer_id) is True
-    pg.kafka_producer.produce_delete.assert_called_once_with(c)
+    pg.kafka_producer.produce_delete.assert_called_once()
+    assert pg.kafka_producer.produce_delete.call_args.args[0] is c
+
+
+def test_emit_uses_bounded_flush_timeout(pg, monkeypatch):
+    # The emission must pass a positive, bounded flush timeout so a reachable
+    # Schema Registry + unreachable broker cannot hang the request on flush().
+    pg.db_sink.create.return_value = _customer()
+    _enable(monkeypatch, True)
+    pg.create(CustomerCreate(first_name="Ada", last_name="L", email="a@b.c"))
+    kwargs = pg.kafka_producer.produce_create.call_args.kwargs
+    assert kwargs.get("flush_timeout") is not None
+    assert kwargs["flush_timeout"] > 0
 
 
 def test_create_still_succeeds_when_producer_raises(pg, monkeypatch):
