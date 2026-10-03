@@ -12,8 +12,7 @@ Seam: HTTP API at /api/v1/customers
 
 from __future__ import annotations
 
-import sys
-from unittest.mock import patch
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -29,27 +28,46 @@ from tests.conftest import make_create_payload, make_full_payload
 def client():
     """TestClient wired to SINK=postgres.
 
-    The lifespan handler creates the schema and seeds from CSV on first boot,
-    so the database is always in a known state at the start of the suite.
+    Overrides the live settings singleton and db_sink pool directly so the
+    suite runs cleanly after a kafka suite in the same process.
     Automatically skipped when DATABASE_URL is not set.
     """
-    import os as _os
-    if not _os.getenv("DATABASE_URL"):
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
         pytest.skip("DATABASE_URL not set — skipping postgres integration test")
 
-    env_patch = patch.dict("os.environ", {"SINK": "postgres"})
-    env_patch.start()
+    # Import everything fresh (modules may already be loaded from kafka suite)
+    import config
+    import customers.db_sink as db_sink
+    import customers.kafka_producer as kafka_producer
+    import main  # noqa: PLC0415
 
-    for mod in list(sys.modules.keys()):
-        if mod in ("config", "customers.service", "customers.db_sink",
-                   "customers.inventory", "main"):
-            del sys.modules[mod]
+    # Directly override the settings singleton for the duration of this suite
+    original_sink = config.settings.SINK
+    original_db_url = config.settings.DATABASE_URL
+    config.settings.SINK = "postgres"
+    config.settings.DATABASE_URL = database_url
 
-    import main  # noqa: PLC0415 — intentional late import after env patch
+    # Reset the connection pool so it re-connects with the correct URL
+    if db_sink._pool is not None:
+        try:
+            db_sink._pool.closeall()
+        except Exception:
+            pass
+        db_sink._pool = None
+
     with TestClient(main.app) as test_client:
         yield test_client
 
-    env_patch.stop()
+    # Restore settings
+    config.settings.SINK = original_sink
+    config.settings.DATABASE_URL = original_db_url
+    if db_sink._pool is not None:
+        try:
+            db_sink._pool.closeall()
+        except Exception:
+            pass
+        db_sink._pool = None
 
 
 # ---------------------------------------------------------------------------

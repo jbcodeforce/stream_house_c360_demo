@@ -66,4 +66,11 @@ def list_all() -> list[Customer]:
 def delete_by_id(customer_id: UUID) -> bool:
     if settings.SINK == "postgres":
         return db_sink.delete_by_id(customer_id)
-    return inventory.delete_by_id(customer_id)
+    # kafka path: look up the customer first so we can produce a tombstone
+    existing = inventory.get_by_id(customer_id)
+    if existing is None:
+        return False
+    deleted = inventory.delete_by_id(customer_id)
+    if deleted:
+        kafka_producer.produce_delete(existing)
+    return deleted

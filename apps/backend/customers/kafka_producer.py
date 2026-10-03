@@ -1,11 +1,20 @@
 """Kafka sink for the customers service.
 
-Produces Avro-serialised customer events to a Confluent Kafka topic via
-Confluent Schema Registry.  The producer is created lazily on first use
-via ``_get_producer()``.
+Produces Avro-serialised customer events using the Debezium change-event
+envelope schema (`cdc.public.customers.Envelope`), matching exactly what
+the Debezium PostgreSQL connector emits.  This lets downstream consumers
+(Flink, ksqlDB, Tableflow) treat bypass-mode events identically to CDC
+events from the real connector.
+
+Schema is loaded from ``customers/schema/customer.avro`` — the file
+downloaded directly from the Schema Registry.
 """
 
 from __future__ import annotations
+
+import time
+from datetime import date, timezone
+from pathlib import Path
 
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer
@@ -16,40 +25,135 @@ from config import settings
 from customers.models import Customer
 
 # ---------------------------------------------------------------------------
-# Avro schema
-# Derived from the Customer model fields.  UUID/datetime/date fields are
-# serialised as Avro strings.  Optional fields use a ["null", "string"]
-# union with a default of null.
+# Schema — loaded from the file downloaded from Schema Registry
 # ---------------------------------------------------------------------------
 
-CUSTOMER_AVRO_SCHEMA = """
-{
-  "type": "record",
-  "name": "Customer",
-  "namespace": "com.c360.customers",
-  "fields": [
-    {"name": "op",              "type": "string"},
-    {"name": "customer_id",     "type": "string"},
-    {"name": "first_name",      "type": "string"},
-    {"name": "last_name",       "type": "string"},
-    {"name": "email",           "type": "string"},
-    {"name": "phone",           "type": ["null", "string"], "default": null},
-    {"name": "date_of_birth",   "type": ["null", "string"], "default": null},
-    {"name": "gender",          "type": ["null", "string"], "default": null},
-    {"name": "address_line1",   "type": ["null", "string"], "default": null},
-    {"name": "address_line2",   "type": ["null", "string"], "default": null},
-    {"name": "city",            "type": ["null", "string"], "default": null},
-    {"name": "state",           "type": ["null", "string"], "default": null},
-    {"name": "postal_code",     "type": ["null", "string"], "default": null},
-    {"name": "country",         "type": "string"},
-    {"name": "customer_since",  "type": "string"},
-    {"name": "segment",         "type": ["null", "string"], "default": null},
-    {"name": "status",          "type": "string"},
-    {"name": "created_at",      "type": "string"},
-    {"name": "updated_at",      "type": "string"}
-  ]
-}
-"""
+_SCHEMA_PATH = Path(__file__).parent / "schema" / "customer.avro"
+_SCHEMA_STR: str = _SCHEMA_PATH.read_text(encoding="utf-8")
+
+# Debezium op codes (lowercase, matching CDC connector output)
+_OP_CREATE = "c"
+_OP_UPDATE = "u"
+_OP_DELETE = "d"
+
+# Synthetic source block — identifies this as a bypass producer, not real CDC
+_SOURCE_CONNECTOR = "c360-backend-bypass"
+_SOURCE_DB = "c360db"
+_SOURCE_SCHEMA = "public"
+_SOURCE_TABLE = "customers"
+
+# ---------------------------------------------------------------------------
+# Date encoding helpers
+# Debezium io.debezium.time.Date → int (days since Unix epoch 1970-01-01)
+# Debezium io.debezium.time.ZonedTimestamp → ISO-8601 string
+# ---------------------------------------------------------------------------
+
+_EPOCH = date(1970, 1, 1)
+
+
+def _to_debezium_date(d: date | None) -> int | None:
+    """Convert a Python date to days-since-epoch (Debezium Date encoding)."""
+    if d is None:
+        return None
+    return (d - _EPOCH).days
+
+
+def _to_debezium_ts(dt) -> str:
+    """Convert a datetime to Debezium ZonedTimestamp format.
+
+    Debezium emits timestamps as ``"YYYY-MM-DDTHH:MM:SS.ffffffZ"`` strings.
+    """
+    if dt is None:
+        return "1970-01-01T00:00:00.000000Z"
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    # Normalise to UTC and format to microseconds
+    dt_utc = dt.astimezone(timezone.utc)
+    return dt_utc.strftime("%Y-%m-%dT%H:%M:%S.") + f"{dt_utc.microsecond:06d}Z"
+
+
+# ---------------------------------------------------------------------------
+# Payload builders
+# ---------------------------------------------------------------------------
+
+def _build_value(customer: Customer) -> dict:
+    """Build a Debezium Value record from a Customer."""
+    return {
+        "customer_id": str(customer.customer_id),
+        "first_name": customer.first_name,
+        "last_name": customer.last_name,
+        "email": customer.email,
+        "phone": customer.phone,
+        "date_of_birth": _to_debezium_date(
+            customer.date_of_birth.date()
+            if customer.date_of_birth is not None
+            else None
+        ),
+        "gender": customer.gender,
+        "address_line1": customer.address_line1,
+        "address_line2": customer.address_line2,
+        "city": customer.city,
+        "state": customer.state,
+        "postal_code": customer.postal_code,
+        "country": customer.country,
+        "customer_since": _to_debezium_date(customer.customer_since),
+        "segment": customer.segment,
+        "status": customer.status,
+        "created_at": _to_debezium_ts(customer.created_at),
+        "updated_at": _to_debezium_ts(customer.updated_at),
+    }
+
+
+def _build_source(ts_ms: int) -> dict:
+    """Build a synthetic Debezium Source block."""
+    return {
+        "version": "2.0.0.bypass",
+        "connector": _SOURCE_CONNECTOR,
+        "name": "cdc",
+        "ts_ms": ts_ms,
+        "snapshot": "false",
+        "db": _SOURCE_DB,
+        "sequence": None,
+        "schema": _SOURCE_SCHEMA,
+        "table": _SOURCE_TABLE,
+        "txId": None,
+        "lsn": None,
+        "xmin": None,
+    }
+
+
+def _build_envelope(customer: Customer, op: str) -> dict:
+    """Build a full Debezium Envelope message.
+
+    - ``op="c"`` (create): before=null, after=Value
+    - ``op="u"`` (update): before=null (we don't track the old row), after=Value
+    - ``op="d"`` (delete): before=Value, after=null
+    """
+    ts_ms = int(time.time() * 1000)
+    value = _build_value(customer)
+
+    before = None
+    after = None
+
+    if op == _OP_DELETE:
+        before = value
+    else:
+        after = value
+
+    return {
+        "before": before,
+        "after": after,
+        "source": _build_source(ts_ms),
+        "op": op,
+        "ts_ms": ts_ms,
+        "transaction": None,
+    }
+
+
+def _envelope_to_dict(envelope: dict, ctx) -> dict:  # noqa: ANN001
+    """Pass-through to_dict callback for AvroSerializer."""
+    return envelope
+
 
 # ---------------------------------------------------------------------------
 # Module-level lazy producer
@@ -58,19 +162,8 @@ CUSTOMER_AVRO_SCHEMA = """
 _producer: SerializingProducer | None = None
 
 
-def _customer_to_dict(customer: dict, ctx) -> dict:  # noqa: ANN001
-    """Convert a Customer payload dict to a plain Avro-compatible dict.
-
-    This is the ``to_dict`` callback passed to ``AvroSerializer``.  The
-    ``customer`` argument is already a plain dict built by ``_build_payload``
-    so no further transformation is needed; the function signature matches
-    what ``AvroSerializer`` expects (value, SerializationContext).
-    """
-    return customer
-
-
 def init_producer() -> SerializingProducer:
-    """Initialise and return a ``SerializingProducer`` backed by Avro + SR."""
+    """Initialise and return a SerializingProducer backed by Avro + SR."""
     sr_client = SchemaRegistryClient(
         {
             "url": settings.SCHEMA_REGISTRY_URL,
@@ -83,8 +176,8 @@ def init_producer() -> SerializingProducer:
 
     avro_serializer = AvroSerializer(
         schema_registry_client=sr_client,
-        schema_str=CUSTOMER_AVRO_SCHEMA,
-        to_dict=_customer_to_dict,
+        schema_str=_SCHEMA_STR,
+        to_dict=_envelope_to_dict,
     )
 
     return SerializingProducer(
@@ -104,50 +197,38 @@ def _get_producer() -> SerializingProducer:
     return _producer
 
 
-def _build_payload(customer: Customer, op: str) -> dict:
-    """Build the Avro payload dict from a ``Customer`` instance."""
-    return {
-        "op": op,
-        "customer_id": str(customer.customer_id),
-        "first_name": customer.first_name,
-        "last_name": customer.last_name,
-        "email": customer.email,
-        "phone": customer.phone,
-        "date_of_birth": (
-            customer.date_of_birth.isoformat() if customer.date_of_birth else None
-        ),
-        "gender": customer.gender,
-        "address_line1": customer.address_line1,
-        "address_line2": customer.address_line2,
-        "city": customer.city,
-        "state": customer.state,
-        "postal_code": customer.postal_code,
-        "country": customer.country,
-        "customer_since": customer.customer_since.isoformat(),
-        "segment": customer.segment,
-        "status": customer.status,
-        "created_at": customer.created_at.isoformat(),
-        "updated_at": customer.updated_at.isoformat(),
-    }
-
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def produce_create(customer: Customer) -> None:
-    """Produce a customer-created event (``op="C"``) to the Kafka topic."""
+    """Produce a Debezium create event (op="c") to the Kafka topic."""
     producer = _get_producer()
     producer.produce(
         topic=settings.KAFKA_TOPIC_CUSTOMERS,
         key=str(customer.customer_id),
-        value=_build_payload(customer, "C"),
+        value=_build_envelope(customer, _OP_CREATE),
     )
     producer.flush()
 
 
 def produce_update(customer: Customer) -> None:
-    """Produce a customer-updated event (``op="U"``) to the Kafka topic."""
+    """Produce a Debezium update event (op="u") to the Kafka topic."""
     producer = _get_producer()
     producer.produce(
         topic=settings.KAFKA_TOPIC_CUSTOMERS,
         key=str(customer.customer_id),
-        value=_build_payload(customer, "U"),
+        value=_build_envelope(customer, _OP_UPDATE),
+    )
+    producer.flush()
+
+
+def produce_delete(customer: Customer) -> None:
+    """Produce a Debezium delete event (op="d") to the Kafka topic."""
+    producer = _get_producer()
+    producer.produce(
+        topic=settings.KAFKA_TOPIC_CUSTOMERS,
+        key=str(customer.customer_id),
+        value=_build_envelope(customer, _OP_DELETE),
     )
     producer.flush()
