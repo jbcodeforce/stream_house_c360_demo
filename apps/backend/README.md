@@ -48,6 +48,20 @@ The seed file (`customers/data/customers.csv`) ships with 10 pre-populated custo
 ## Accounts CRU operations
 
 
+## Runtime config
+
+A runtime, user-editable flag controls whether customer writes also emit a
+Kafka event (dual-write) when Postgres is the sink. It is persisted to a JSON
+file (`RUNTIME_CONFIG_FILE`, default `runtime_config.json`) and defaults to
+`false`.
+
+- `GET /config` → 200, returns `{ "kafka_produce_enabled": bool }`
+- `PUT /config` body `{ "kafka_produce_enabled": bool }` → 200, persisted
+
+When enabled, `create`/`update`/`delete` on the Postgres path emit a
+best-effort Kafka event (`c`/`u`/`d`); a produce failure is logged and never
+fails the DB operation. The `SINK=kafka` path is unaffected.
+
 ## Testing
 
 1. Start the container
