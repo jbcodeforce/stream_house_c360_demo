@@ -1,0 +1,25 @@
+import { Users, Wallet, ArrowLeftRight } from 'lucide-react'
+import { NavLink } from 'react-router-dom'
+
+const links = [
+  { to: '/customers', label: 'Customers', Icon: Users },
+  { to: '/accounts', label: 'Accounts', Icon: Wallet },
+  { to: '/transactions', label: 'Transactions', Icon: ArrowLeftRight },
+]
+
+export default function Sidebar() {
+  return (
+    <nav className="sidebar">
+      {links.map(({ to, label, Icon }) => (
+        <NavLink
+          key={to}
+          to={to}
+          className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`}
+        >
+          <Icon size={18} />
+          <span>{label}</span>
+        </NavLink>
+      ))}
+    </nav>
+  )
+}
