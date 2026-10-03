@@ -10,3 +10,6 @@
 
 # Superpowers SDD scratch workspace
 .superpowers/
+
+# Runtime app config (user-editable, not source)
+**/runtime_config.json
