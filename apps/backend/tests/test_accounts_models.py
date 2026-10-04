@@ -21,6 +21,13 @@ def test_create_applies_defaults():
     assert a.closed_date is None
 
 
+def test_opened_date_default_is_dynamic():
+    # Must use default_factory so each instance stamps the current date, not a
+    # value frozen at import time.
+    field = AccountCreate.model_fields["opened_date"]
+    assert field.default_factory is not None
+
+
 def test_update_is_all_optional():
     u = AccountUpdate()
     assert u.model_dump(exclude_unset=True) == {}

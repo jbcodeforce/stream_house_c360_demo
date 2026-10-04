@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class AccountCreate(BaseModel):
@@ -11,7 +11,7 @@ class AccountCreate(BaseModel):
     currency: str = "USD"
     balance: float = 0.0
     credit_limit: float | None = None
-    opened_date: date = date.today()
+    opened_date: date = Field(default_factory=date.today)
     closed_date: date | None = None
     status: str = "ACTIVE"
 
