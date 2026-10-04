@@ -47,6 +47,18 @@ The seed file (`customers/data/customers.csv`) ships with 10 pre-populated custo
 
 ## Accounts CRU operations
 
+Exposes an **Accounts CRUD REST API** mirroring customers, stored in Postgres.
+
+**Expected Outcomes:**
+- `POST /accounts` → 201 Created, returns `Account` (409 on duplicate `account_number`)
+- `GET /accounts` → 200, returns `list[Account]`
+- `GET /accounts/{account_id}` → 200 or 404
+- `PUT /accounts/{account_id}` → 200 or 404
+- `DELETE /accounts/{account_id}` → 204 or 404
+
+When the runtime "produce Kafka events" flag is on, create/update/delete also
+emit a best-effort Debezium envelope to `KAFKA_TOPIC_ACCOUNTS`
+(default `cdc.public.accounts`); failures are logged, never failing the DB op.
 
 ## Runtime config
 

@@ -4,6 +4,9 @@ import PlaceholderPage from './pages/PlaceholderPage'
 import CustomersPage from './pages/CustomersPage'
 import CustomerDetailPage from './pages/CustomerDetailPage'
 import CustomerFormPage from './pages/CustomerFormPage'
+import AccountsPage from './pages/AccountsPage'
+import AccountDetailPage from './pages/AccountDetailPage'
+import AccountFormPage from './pages/AccountFormPage'
 import ConfigPage from './pages/ConfigPage'
 
 export default function App() {
@@ -15,7 +18,10 @@ export default function App() {
         <Route path="/customers/new" element={<CustomerFormPage />} />
         <Route path="/customers/:id" element={<CustomerDetailPage />} />
         <Route path="/customers/:id/edit" element={<CustomerFormPage />} />
-        <Route path="/accounts" element={<PlaceholderPage title="Accounts" />} />
+        <Route path="/accounts" element={<AccountsPage />} />
+        <Route path="/accounts/new" element={<AccountFormPage />} />
+        <Route path="/accounts/:id" element={<AccountDetailPage />} />
+        <Route path="/accounts/:id/edit" element={<AccountFormPage />} />
         <Route path="/transactions" element={<PlaceholderPage title="Transactions" />} />
         <Route path="/settings" element={<ConfigPage />} />
       </Route>
