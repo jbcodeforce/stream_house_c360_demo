@@ -1,12 +1,23 @@
 """In-memory customer inventory backed by a CSV file."""
 
 import csv
+import os
 from pathlib import Path
 from uuid import UUID
 
 from customers.models import Customer
 
 _CSV_PATH = Path(__file__).parent / "data" / "customers.csv"
+
+
+def _csv_path() -> Path:
+    """Resolve the CSV path, honouring the CUSTOMERS_CSV_PATH override.
+
+    Tests point this at a throwaway copy of the seed data so they never mutate
+    the committed seed file.
+    """
+    override = os.getenv("CUSTOMERS_CSV_PATH")
+    return Path(override) if override else _CSV_PATH
 
 _FIELDNAMES = [
     "customer_id",
@@ -65,7 +76,7 @@ def _customer_to_row(customer: Customer) -> dict:
 def load() -> list[Customer]:
     """Read the CSV file into the in-memory cache and return it."""
     global _customers
-    with _CSV_PATH.open(newline="", encoding="utf-8") as fh:
+    with _csv_path().open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         _customers = [_row_to_customer(row) for row in reader]
     return _customers
@@ -87,7 +98,7 @@ def get_by_id(customer_id: UUID) -> Customer | None:
 def create(customer: Customer) -> Customer:
     """Append a new customer to the in-memory cache and persist to CSV."""
     _customers.append(customer)
-    with _CSV_PATH.open("a", newline="", encoding="utf-8") as fh:
+    with _csv_path().open("a", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=_FIELDNAMES)
         writer.writerow(_customer_to_row(customer))
     return customer
@@ -116,7 +127,7 @@ def delete_by_id(customer_id: UUID) -> bool:
 
 def _rewrite_csv() -> None:
     """Rewrite the entire CSV from the current in-memory cache."""
-    with _CSV_PATH.open("w", newline="", encoding="utf-8") as fh:
+    with _csv_path().open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for customer in _customers:

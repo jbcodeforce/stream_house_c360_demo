@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 from datetime import date, datetime, timezone
 from uuid import uuid4
 
@@ -23,8 +24,11 @@ def _account(number: str) -> Account:
 
 
 def test_load_parses_seed_csv():
+    # Reads the session's throwaway copy of the seed (see conftest isolation).
+    with inventory._csv_path().open(newline="", encoding="utf-8") as fh:
+        expected = sum(1 for _ in csv.DictReader(fh))
     accounts = inventory.load()
-    assert len(accounts) == 151
+    assert len(accounts) == expected
     first = accounts[0]
     assert first.account_number == "CHK-39958838"
     assert first.account_type == "CHECKING"
@@ -37,7 +41,7 @@ def test_load_parses_seed_csv():
 def test_create_appends_and_persists(tmp_path, monkeypatch):
     csv_path = tmp_path / "accounts.csv"
     csv_path.write_text(_HEADER + _ROW, encoding="utf-8")
-    monkeypatch.setattr(inventory, "_CSV_PATH", csv_path)
+    monkeypatch.setenv("ACCOUNTS_CSV_PATH", str(csv_path))
     inventory.load()
     assert len(inventory.list_all()) == 1
 
@@ -54,7 +58,7 @@ def test_create_appends_and_persists(tmp_path, monkeypatch):
 def test_update_replaces(tmp_path, monkeypatch):
     csv_path = tmp_path / "accounts.csv"
     csv_path.write_text(_HEADER + _ROW, encoding="utf-8")
-    monkeypatch.setattr(inventory, "_CSV_PATH", csv_path)
+    monkeypatch.setenv("ACCOUNTS_CSV_PATH", str(csv_path))
     [existing] = inventory.load()
     changed = existing.model_copy(update={"status": "CLOSED"})
     inventory.update(changed)
@@ -64,7 +68,7 @@ def test_update_replaces(tmp_path, monkeypatch):
 def test_delete_removes(tmp_path, monkeypatch):
     csv_path = tmp_path / "accounts.csv"
     csv_path.write_text(_HEADER + _ROW, encoding="utf-8")
-    monkeypatch.setattr(inventory, "_CSV_PATH", csv_path)
+    monkeypatch.setenv("ACCOUNTS_CSV_PATH", str(csv_path))
     [existing] = inventory.load()
     assert inventory.delete_by_id(existing.account_id) is True
     assert inventory.list_all() == []

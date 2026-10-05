@@ -6,6 +6,7 @@ CSV writes keep the original 9-column schema.
 """
 
 import csv
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -13,6 +14,16 @@ from uuid import UUID, uuid4
 from accounts.models import Account
 
 _CSV_PATH = Path(__file__).parent / "data" / "accounts.csv"
+
+
+def _csv_path() -> Path:
+    """Resolve the CSV path, honouring the ACCOUNTS_CSV_PATH override.
+
+    Tests point this at a throwaway copy of the seed data so they never mutate
+    the committed seed file.
+    """
+    override = os.getenv("ACCOUNTS_CSV_PATH")
+    return Path(override) if override else _CSV_PATH
 
 # CSV columns (server-assigned fields are not stored in the file)
 _FIELDNAMES = [
@@ -58,7 +69,7 @@ def _account_to_row(account: Account) -> dict:
 def load() -> list[Account]:
     """Read the CSV file into the in-memory cache and return it."""
     global _accounts
-    with _CSV_PATH.open(newline="", encoding="utf-8") as fh:
+    with _csv_path().open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         _accounts = [_row_to_account(row) for row in reader]
     return _accounts
@@ -80,7 +91,7 @@ def get_by_id(account_id: UUID) -> Account | None:
 def create(account: Account) -> Account:
     """Append a new account to the in-memory cache and persist to CSV."""
     _accounts.append(account)
-    with _CSV_PATH.open("a", newline="", encoding="utf-8") as fh:
+    with _csv_path().open("a", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=_FIELDNAMES)
         writer.writerow(_account_to_row(account))
     return account
@@ -109,7 +120,7 @@ def delete_by_id(account_id: UUID) -> bool:
 
 def _rewrite_csv() -> None:
     """Rewrite the entire CSV from the current in-memory cache."""
-    with _CSV_PATH.open("w", newline="", encoding="utf-8") as fh:
+    with _csv_path().open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=_FIELDNAMES)
         writer.writeheader()
         for account in _accounts:

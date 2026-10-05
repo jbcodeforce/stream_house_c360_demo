@@ -13,6 +13,7 @@ Two test suites coexist:
 from __future__ import annotations
 
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,36 @@ from dotenv import load_dotenv
 _env_local = Path(__file__).parent.parent / ".env.local"
 if _env_local.exists():
     load_dotenv(_env_local, override=False)
+
+_BACKEND_DIR = Path(__file__).parent.parent
+
+
+# ---------------------------------------------------------------------------
+# Isolate the seed CSVs: tests mutate throwaway copies, never the committed
+# seed files. The inventory modules read these env vars at call time, so the
+# override is in effect before any app lifespan or test-created client loads.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True, scope="session")
+def isolate_seed_csvs(tmp_path_factory):
+    """Point the CSV-backed inventories at per-session copies of the seeds."""
+    tmp = tmp_path_factory.mktemp("seed_csvs")
+    seeds = {
+        "CUSTOMERS_CSV_PATH": _BACKEND_DIR / "customers" / "data" / "customers.csv",
+        "ACCOUNTS_CSV_PATH": _BACKEND_DIR / "accounts" / "data" / "accounts.csv",
+    }
+    previous = {}
+    for env_key, src in seeds.items():
+        dst = tmp / src.name
+        shutil.copy(src, dst)
+        previous[env_key] = os.environ.get(env_key)
+        os.environ[env_key] = str(dst)
+    yield
+    for env_key, prior in previous.items():
+        if prior is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = prior
 
 
 # ---------------------------------------------------------------------------
