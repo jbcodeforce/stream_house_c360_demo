@@ -10,6 +10,8 @@ from accounts import db_sink as accounts_db_sink, inventory as accounts_inventor
 from api.account_resource import router as account_router
 from api.config_resource import router as config_router
 from api.customer_resource import router as customers_router
+from api.transaction_resource import router as transaction_router
+from transactions import db_sink as transactions_db_sink, inventory as transactions_inventory
 from config import settings
 from customers import db_sink as customers_db_sink, inventory
 
@@ -25,6 +27,9 @@ async def lifespan(app: FastAPI):
         accounts_db_sink.init_db()
         accounts = accounts_inventory.load()
         accounts_db_sink.seed_from_csv(accounts)
+        transactions_db_sink.init_db()
+        transactions = transactions_inventory.load(accounts)
+        transactions_db_sink.seed_from_csv(transactions)
         logger.info("Postgres sink ready — schema initialised and seeded if empty")
     elif settings.SINK == "kafka":
         customers = inventory.load()
@@ -43,6 +48,7 @@ app.add_middleware(
 
 app.include_router(customers_router, prefix="/api/v1")
 app.include_router(account_router, prefix="/api/v1")
+app.include_router(transaction_router, prefix="/api/v1")
 app.include_router(config_router, prefix="/api/v1")
 
 

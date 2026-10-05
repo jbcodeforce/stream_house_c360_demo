@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     SCHEMA_REGISTRY_API_SECRET: str | None = None
     KAFKA_TOPIC_CUSTOMERS: str = "cdc.public.customers"
     KAFKA_TOPIC_ACCOUNTS: str = "cdc.public.accounts"
+    KAFKA_TOPIC_TRANSACTIONS: str = "cdc.public.transactions"
     RUNTIME_CONFIG_FILE: str | None = None
 
 

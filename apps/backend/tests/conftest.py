@@ -42,6 +42,7 @@ def isolate_seed_csvs(tmp_path_factory):
     seeds = {
         "CUSTOMERS_CSV_PATH": _BACKEND_DIR / "customers" / "data" / "customers.csv",
         "ACCOUNTS_CSV_PATH": _BACKEND_DIR / "accounts" / "data" / "accounts.csv",
+        "TRANSACTIONS_CSV_PATH": _BACKEND_DIR / "transactions" / "data" / "transactions.csv",
     }
     previous = {}
     for env_key, src in seeds.items():
