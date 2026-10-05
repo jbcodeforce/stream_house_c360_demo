@@ -9,11 +9,21 @@ import csv
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID, uuid5
 
 from accounts.models import Account
 
 _CSV_PATH = Path(__file__).parent / "data" / "accounts.csv"
+
+# Fixed namespace so account_id is derived deterministically from the stable
+# account_number. The seed CSV carries no account_id, so a random id would be
+# minted on every load and drift across restarts — breaking the transactions
+# foreign key when accounts and transactions are re-seeded independently.
+_ACCOUNT_ID_NAMESPACE = UUID("6ba7b814-9dad-11d1-80b4-00c04fd430c8")
+
+
+def _account_id_for(account_number: str) -> str:
+    return str(uuid5(_ACCOUNT_ID_NAMESPACE, account_number))
 
 
 def _csv_path() -> Path:
@@ -45,7 +55,7 @@ def _row_to_account(row: dict) -> Account:
     """Convert a CSV row to an Account, generating server-assigned fields."""
     cleaned = {k: (v if v != "" else None) for k, v in row.items()}
     now = datetime.now(tz=timezone.utc)
-    cleaned["account_id"] = str(uuid4())
+    cleaned["account_id"] = _account_id_for(row["account_number"])
     cleaned["created_at"] = now
     cleaned["updated_at"] = now
     return Account.model_validate(cleaned)

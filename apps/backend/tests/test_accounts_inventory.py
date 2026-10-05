@@ -38,6 +38,14 @@ def test_load_parses_seed_csv():
     assert first.created_at is not None
 
 
+def test_account_id_is_stable_across_loads():
+    # account_id is derived from account_number, so it must not change between
+    # restarts — otherwise transaction FKs break on re-seed. Regression guard.
+    first = {a.account_number: a.account_id for a in inventory.load()}
+    second = {a.account_number: a.account_id for a in inventory.load()}
+    assert first == second
+
+
 def test_create_appends_and_persists(tmp_path, monkeypatch):
     csv_path = tmp_path / "accounts.csv"
     csv_path.write_text(_HEADER + _ROW, encoding="utf-8")

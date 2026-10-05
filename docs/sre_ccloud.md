@@ -30,3 +30,49 @@ Next step is to create a KafKa Cluster
 *As part of the essential governance, a schema registry is created once the Kafka Cluster is launched.*
 
 #### Create Confluent Cloud Flink Compute Pool
+
+
+#### Create Debezium CDC v2 Kafka Connector
+
+Once the database instance is created and has DNS server name and port number and access policies setup, we need to add the Kafka Connector. The figure below illustrates the components created:
+
+![](./diagrams/kafka-connect.drawio.png)
+
+[See confluent Cloud product documentation](https://docs.confluent.io/cloud/current/connectors/cc-postgresql-cdc-source-v2-debezium/cc-postgresql-cdc-source-v2-debezium.html)
+
+
+1. Select the Kafka Cluster
+    ![](./images/ccloud/cc-cdc-1.png)
+
+1. Select Connector Tab to land in the connectors home page:
+    ![](./images/ccloud/cc-cdc-2.png)
+
+1. Add Connector, and select the Postgres CDC Source V2
+    ![](./images/ccloud/cc-cdc-deb.png)
+
+1. Add topic information like the prefix to use to differentiate among other topic. Set the default number of partitions and cleanup policy
+
+    ![](./images/ccloud/cdc-topic-cfg.png)
+
+1. Define how to access the Kafka cluster. Use an existing API Key ...
+
+    ![](./images/ccloud/cdc-kafka-access.png)
+
+    or create a new one
+
+    ![](./images/ccloud/cdc-kafka-access-2.png)
+
+
+1. Define connection credentials to external database
+    ![](./images/ccloud/cc-cdc-auth.png)
+
+
+1. Define topic configuration
+    ![](./images/ccloud/cdc-sr-avro.png)
+
+1. Launch the connector
+1. Verify created topics
+    ![](./images/ccloud/kafka-topics.png)
+
+1. Verify Schema registry schemas
+    ![](./images/ccloud/cdc-schemas.png)
