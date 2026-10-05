@@ -38,12 +38,17 @@ const DATE_FIELDS = new Set<keyof CustomerCreate>(
 )
 
 function toPayload(form: FormState): CustomerCreate {
-  const out = {} as Record<string, string | null>
+  const out = {} as Record<string, string>
   for (const key of Object.keys(form) as (keyof FormState)[]) {
     const value = form[key].trim()
-    out[key] = value === '' ? null : value
+    // Omit empty fields rather than sending null: the backend's non-optional
+    // defaulted fields (country, customer_since, status) reject an explicit
+    // null (422) and apply their default only when the key is absent.
+    if (value !== '') {
+      out[key] = value
+    }
   }
-  // Required fields are guaranteed non-null by validation before this runs.
+  // Required fields are guaranteed present by validation before this runs.
   return out as unknown as CustomerCreate
 }
 

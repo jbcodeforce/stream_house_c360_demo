@@ -28,7 +28,7 @@ describe('CustomerFormPage', () => {
     expect(create).not.toHaveBeenCalled()
   })
 
-  it('creates a customer and sends empty optionals as null', async () => {
+  it('creates a customer and omits empty optional fields', async () => {
     const create = vi.spyOn(api, 'createCustomer').mockResolvedValue({} as never)
     renderAt('/customers/new')
     await userEvent.type(screen.getByLabelText(/first name/i), 'Ada')
@@ -38,7 +38,11 @@ describe('CustomerFormPage', () => {
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
     const payload = create.mock.calls[0][0]
     expect(payload).toMatchObject({ first_name: 'Ada', last_name: 'Lovelace', email: 'ada@x.io' })
-    expect(payload.phone).toBeNull()
+    // Empty fields must be OMITTED, not sent as null: the backend applies its
+    // defaults (country, customer_since, status) only when a key is absent —
+    // an explicit null on a non-optional defaulted field is a 422.
+    expect('phone' in payload).toBe(false)
+    expect('customer_since' in payload).toBe(false)
   })
 
   it('normalizes a datetime date_of_birth to yyyy-MM-dd for the date input', async () => {
