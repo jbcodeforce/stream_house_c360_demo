@@ -2,58 +2,30 @@
 
 *Updated 10/04/2026: Add webapp for demos*
 
-The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. 
+The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. It is a demonstration of Streamhouse.
 
-At the high level Streamhouse reference architecture looks like in the figure below:
+At the high level, Streamhouse reference architecture looks like in the figure below:
 
 ![](./docs/stream-arch.drawio.png)
 
-When applied to Confluent technology stack will map to the following components:
+When applied to Confluent technology stack, Streamhouse is supported by the following components:
 
 ![](./docs/stream-cc-arch.drawio.png)
 
-## Goal of this demonstration
+1. The **capture** is done by Kafka source connectors
+1. The **transport** is supported by Kafka Brokers and topics
+1. **Transform** is done by Confluent Cloud for Flink
+1. **Serve** is supported by Flink with snapshot queries, by Kafka Sink connectors and Tableflow to write Iceberg Tables to object storage. Real-time context engine is also a serving layer for AI Agents.
 
-The goal is to demonstrate synchronize a change in business state everywhere it is used. We will mockup transactional application / microservices writing transactions, accounts and customers records to a SQL database. We can use IBM Db2 RDBMS or Postgresql. The end-to-end, more complext architecture looks like:
+### Actors
 
-![](./docs/diagrams/stream-cut1-arch.drawio.png)
-
-* Microservice applications write to database table. (they will be mcoked up to simple Fast API CRUD on each entities)
-* CDC Debezium Kafka Connector, create one topic per table, define schema in schema registry
-* A set of Flink queries will prepare the data to build customer 360 analytics metrics, that will be served in a sink topic
-* Sink topic is processed by Tableflow to export data as Iceberg table / parquet files into object storage
-* External catalogs are in sync with Tableflow catalog
-* Other queries are done by Data engineer on data at rest.
-
-There is a simpler architecture to run database and code locally with Confluent Cloud for Kafka, Flink, Tableflow and Streamhouse components.
-
-![](./docs/diagrams/stream-cut1-local-arch.drawio.png)
-
-The WebApp add a easy to use application to navigate, create, update customers and accounts. Transactions are creation only.
-
-![](./docs/images/customers_page.png)
-
-### Backend Architecture
-
-The Web App and backend to support running the demonstration has the following components:
-
-![](./docs/diagrams/backend.drawio.png)
-
-* [See implementation details for developers willing to update this demonstration](./docs/web_app_design.md)
-
-### Demonstration Script
-
-* [See dedicated note](./docs/demo_script.md)
-
-## Actors
-
-We can consider three actors
+The Streamhouse architecture offers services for three actors
 
 1. Site Reliability Engineer
 1. Data Engineer
 1. Application Developer
 
-### SRE
+#### SRE
 
 This use case helps to demonstrate the following tasks a SRE needs to conduct to prepare the environment to support the above architecture. There are two ways to execute those tasks, via Confluent Cloud Console or via infrastructure as code, using Terraform. The following bullet points are generic task description that should be done using both approaches, (some are for production deployment too). 
 
@@ -67,7 +39,7 @@ This use case helps to demonstrate the following tasks a SRE needs to conduct to
 
 *This list will be updated while implementing this demonstration*
 
-### Data Engineer
+#### Data Engineer
 
 The following steps are generic and may be supported by different tools:
 
@@ -80,7 +52,7 @@ The following steps are generic and may be supported by different tools:
 
 [**Star model**](http://jbcodeforce.github.io/flink-studies/cookbook/pm/?h=star+model#the-star-schema) is a multidimensional data model to organize data in a data warehouse. It is used to denormalize business data into dimensions and facts. The `fact` table sits at the center of the start schema. It records the what happened, as quantitative, measurable events. The `Dimension` tables (The "Context") surround the fact table. They provide the "who, what, where, when, and why".
 
-### Application Developer
+#### Application Developer
 
 
 The following steps are generic and may be supported by different tools:
@@ -90,6 +62,52 @@ The following steps are generic and may be supported by different tools:
 1. Integrate data in Kafka via Lightning query or snapshot queries.
 
 *This list will be updated while implementing this demonstration*
+
+--- 
+
+## Goal of this demonstration
+
+The goal is to demonstrate synchronize a change in business state everywhere it is used. We will mockup transactional application / microservices writing transactions, accounts and customers records to a SQL database. We can use IBM Db2 RDBMS or Postgresql. The end-to-end, more complex architecture looks like in the following figure:
+
+![](./docs/diagrams/stream-cut1-arch.drawio.png)
+
+* Microservice applications write to database tables.
+* PostgreSQL database server on AWS RDS
+* CDC Debezium Kafka Connector, create one topic per table, define schema in schema registry
+* A set of Flink queries will prepare the data to build customer 360 analytics metrics, that will be served in a sink topic
+* Sink topic is processed by Tableflow to export data as Iceberg table / parquet files into object storage
+* External catalogs are in sync with Tableflow catalog
+* Other queries are done by Data engineer on data at rest.
+* Web Application for demonstration (run locally as of now)
+
+There is a simpler architecture to run database and code locally with Confluent Cloud for Kafka, Flink, Tableflow and Streamhouse components.
+
+![](./docs/diagrams/stream-cut1-local-arch.drawio.png)
+
+The differences with the more complex demonstration, are:
+* the postgresq server runs locally via container (on Mac - docker compose on Windows. (not yet supported)).
+* The application writes directly to cdc.public.* topics as Debezium will do
+* WebApp runs locally
+
+
+The WebApp adds simple navigation, to create, update, delete customers and accounts. Transactions are creation only.
+
+![](./docs/images/customers_page.png)
+
+### Backend Architecture
+
+The Web App and backend to support running the demonstration has the following components:
+
+![](./docs/diagrams/backend.drawio.png)
+
+* [See implementation details for developers willing to update this demonstration](./docs/web_app_design.md)
+
+### Demonstration Script
+
+* [See dedicated note](./docs/demo_script.md) to run the application with local components.
+* [See AWS components deployments]
+
+
 
 ## SRE's tasks Walking Through
 
