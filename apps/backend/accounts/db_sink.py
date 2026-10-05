@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
@@ -13,6 +14,8 @@ from fastapi import HTTPException
 
 from accounts.models import Account, AccountCreate, AccountUpdate
 from config import settings
+
+logger = logging.getLogger("c360.accounts.db_sink")
 
 _pool: psycopg2.pool.SimpleConnectionPool | None = None
 
@@ -92,6 +95,58 @@ def init_db() -> None:
             for stmt in _DDL_STATEMENTS:
                 cur.execute(stmt)
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        _put_conn(conn)
+
+
+def seed_from_csv(accounts: list[Account]) -> None:
+    """Bulk-insert *accounts* only when the table is currently empty.
+
+    Uses ON CONFLICT DO NOTHING so re-running is safe.
+    """
+    if not accounts:
+        return
+
+    conn = _get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM accounts")
+            count = cur.fetchone()[0]
+            if count > 0:
+                return
+
+            insert_sql = f"""
+                INSERT INTO accounts ({_INSERT_COLS})
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (account_id) DO NOTHING
+            """  # noqa: S608 — static column list
+            for account in accounts:
+                cur.execute(insert_sql, (
+                    str(account.account_id),
+                    str(account.customer_id),
+                    account.account_number,
+                    account.account_type,
+                    account.currency,
+                    account.balance,
+                    account.credit_limit,
+                    account.opened_date,
+                    account.closed_date,
+                    account.status,
+                    account.created_at,
+                    account.updated_at,
+                ))
+        conn.commit()
+    except psycopg2.IntegrityError:
+        # e.g. a FK violation when the referenced customers were not seeded
+        # from the same CSV. Skip seeding rather than crash app startup.
+        conn.rollback()
+        logger.warning(
+            "Skipping accounts seed: integrity error (are customers seeded from the CSV?)",
+            exc_info=True,
+        )
     except Exception:
         conn.rollback()
         raise

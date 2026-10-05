@@ -6,12 +6,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from accounts import db_sink as accounts_db_sink
+from accounts import db_sink as accounts_db_sink, inventory as accounts_inventory
 from api.account_resource import router as account_router
 from api.config_resource import router as config_router
 from api.customer_resource import router as customers_router
 from config import settings
-from customers import db_sink, inventory
+from customers import db_sink as customers_db_sink, inventory
 
 logger = logging.getLogger("c360.main")
 
@@ -19,10 +19,12 @@ logger = logging.getLogger("c360.main")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.SINK == "postgres":
-        db_sink.init_db()
+        customers_db_sink.init_db()
         customers = inventory.load()
-        db_sink.seed_from_csv(customers)
+        customers_db_sink.seed_from_csv(customers)
         accounts_db_sink.init_db()
+        accounts = accounts_inventory.load()
+        accounts_db_sink.seed_from_csv(accounts)
         logger.info("Postgres sink ready — schema initialised and seeded if empty")
     elif settings.SINK == "kafka":
         customers = inventory.load()
