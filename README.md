@@ -67,7 +67,9 @@ The following steps are generic and may be supported by different tools:
 
 ## Goal of this demonstration
 
-The goal is to demonstrate synchronize a change in business state everywhere it is used. We will mockup transactional application / microservices writing transactions, accounts and customers records to a SQL database. We can use IBM Db2 RDBMS or Postgresql. The end-to-end, more complex architecture looks like in the following figure:
+**The goal is to demonstrate how to synchronize a change in business state everywhere it is used.**
+
+We will mockup transactional application / microservices writing transactions, accounts and customers records to a SQL database. We can use IBM Db2 RDBMS or Postgresql. The end-to-end, more complex architecture, looks like in the following figure:
 
 ![](./docs/diagrams/stream-cut1-arch.drawio.png)
 
@@ -104,68 +106,16 @@ The Web App and backend to support running the demonstration has the following c
 
 ### Demonstration Script
 
+*  Deploy Confluent Cloud components: This step is to create Environment, Kafka cluster, schema registry, service accounts, api keys and secrets, and compute pools. We propose two approches to define the environment and components of this demonstration, one using the Confluent Console or one using Terraform:
+    * [using Terraform](./docs/sre_ccloud_tf.md).
+    * [or using the Confluent cloud console](./docs/sre_ccloud.md)
 * [See dedicated note](./docs/demo_script.md) to run the application with local components.
-* [See AWS components deployments]
+* [See AWS components deployments](./docs/sre_aws.md)
 
 
+---
 
-## SRE's tasks Walking Through
-
-We propose two approches to define the environment and components of this demonstration, one using the Confluent Console or one using Terraform.
-
-### Confluent Console Walk Through
-
-We suppose the user has OrganizatonAdmin role to be able to create environment. 
-
-Pre-requisites:
-
-* Login to the Confluent Cloud console
-
-#### Create Confluent Cloud Environment
-
-1. From the home page, go to the environment page, and click on the `Add Cloud Environment` button on the top right part of the page.
-1. Enter name and select one of the governance package. As the demonstration scope is not about governance, use Essential
-
-    ![](./docs/images/ccloud/cc-env-1.png)
-
-#### Create Confluent Cloud Kafka Cluster
-
-Next step is to create a KafKa Cluster
-1. Enter name, and Cluster Type, which for demonstration will be standard.
-
-    ![](./docs/images/ccloud/cc-kafka-1.png)
-1. Select a Cloud Provider and a region, select a 99.9% SLA
-1. Launch the cluster using the right column 'Launch Cluster button`
-1. Create API Key and Secrets
-
-*As part of the essential governance, a schema registry is created once the Kafka Cluster is launched.*
-
-#### Create Confluent Cloud Flink Compute Pool
-
-#### AWS Resources
-
-We will not detail how to use the AWS Console to create RDS Postgresql instance and access VPC information. The [terraform section](#aws-resources-rds-postgresql) below describres how to automate the creation of those resources.
-
-It is important to get the following information to be able to create the Kafka Connector for change data capture.
-
-| Resources | |
-|-----| ---- |
-| Region | us-west-2 |
-| RDS host name | e.g. c360-j9r-postgres.c.....us-west-2.rds.amazonaws.com |
-| secrets_manager_secret_arn | Resource ref for AWS Secrets Manager |
-| Database password  | Coud be created by the admin or retrieve from the secret |
-| Public certificates | a .pem file to download |
-
-![](./docs/images/aws/aws-rds-info.png)
-
-*To retrieve password from secret, knowing the secret arn do:*
-```sh
-aws secretsmanager get-secret-value --secret-id arn:aws:secretsmanager:us-west-2:.....:secret:c360-j9r-rds-credentials-9x --query SecretString --output text |jq -r .password
-```
-
-It is possible to retrieve the secret ARN from secrets manager:
-
-![](./docs/images/aws/aws-secrets.png)
+UNDER REWORK
 
 #### Populate some data into the source database
 
