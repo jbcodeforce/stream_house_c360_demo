@@ -29,6 +29,10 @@ There is a simpler architecture to run database and code locally with Confluent 
 
 ![](./docs/diagrams/stream-cut1-local-arch.drawio.png)
 
+The WebApp add a easy to use application to navigate, create, update customers and accounts. Transactions are creation only.
+
+![](./docs/images/customers_page.png)
+
 ### Backend Architecture
 
 The Web App and backend to support running the demonstration has the following components:
