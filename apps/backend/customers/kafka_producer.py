@@ -189,13 +189,23 @@ def init_producer() -> SerializingProducer:
         to_dict=_envelope_to_dict,
     )
 
-    return SerializingProducer(
-        {
-            "bootstrap.servers": settings.KAFKA_BOOTSTRAP_SERVERS,
-            "key.serializer": StringSerializer("utf_8"),
-            "value.serializer": avro_serializer,
-        }
-    )
+    producer_config: dict = {
+        "bootstrap.servers": settings.KAFKA_BOOTSTRAP_SERVERS,
+        "key.serializer": StringSerializer("utf_8"),
+        "value.serializer": avro_serializer,
+    }
+
+    # Confluent Cloud requires SASL_SSL. Add auth only when credentials are set
+    # so local/test brokers (no auth) still work without config.
+    if settings.KAFKA_API_KEY and settings.KAFKA_API_SECRET:
+        producer_config.update({
+            "security.protocol": "SASL_SSL",
+            "sasl.mechanisms": "PLAIN",
+            "sasl.username": settings.KAFKA_API_KEY,
+            "sasl.password": settings.KAFKA_API_SECRET,
+        })
+
+    return SerializingProducer(producer_config)
 
 
 def _get_producer() -> SerializingProducer:

@@ -8,12 +8,15 @@ class Settings(BaseSettings):
 
     DATABASE_URL: str | None = None
     KAFKA_BOOTSTRAP_SERVERS: str | None = None
+    KAFKA_API_KEY: str | None = None
+    KAFKA_API_SECRET: str | None = None
     SCHEMA_REGISTRY_URL: str | None = None
     SCHEMA_REGISTRY_API_KEY: str | None = None
     SCHEMA_REGISTRY_API_SECRET: str | None = None
-    KAFKA_TOPIC_CUSTOMERS: str = "customers"
+    KAFKA_TOPIC_CUSTOMERS: str = "cdc.public.customers"
     KAFKA_TOPIC_ACCOUNTS: str = "cdc.public.accounts"
     RUNTIME_CONFIG_FILE: str | None = None
 
 
 settings = Settings()
+print(settings.model_dump_json(indent=2))
