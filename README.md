@@ -1,6 +1,6 @@
 # Streamhouse Customer 360
 
-*Updated 9/29/2026*
+*Updated 10/04/2026: Add webapp for demos*
 
 The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. 
 
@@ -14,7 +14,7 @@ When applied to Confluent technology stack will map to the following components:
 
 ## Goal of this demonstration
 
-The goal is to demonstrate synchronize a change in business state everywhere it is used. We will mockup transactional application / microservices writing transactions, accounts and customers records to a SQL database. We can use IBM Db2 RDBMS or Postgresql deployed on AWS RDS service. The end to end architecture looks like:
+The goal is to demonstrate synchronize a change in business state everywhere it is used. We will mockup transactional application / microservices writing transactions, accounts and customers records to a SQL database. We can use IBM Db2 RDBMS or Postgresql. The end-to-end, more complext architecture looks like:
 
 ![](./docs/diagrams/stream-cut1-arch.drawio.png)
 
@@ -25,10 +25,21 @@ The goal is to demonstrate synchronize a change in business state everywhere it 
 * External catalogs are in sync with Tableflow catalog
 * Other queries are done by Data engineer on data at rest.
 
+There is a simpler architecture to run database and code locally with Confluent Cloud for Kafka, Flink, Tableflow and Streamhouse components.
+
+![](./docs/diagrams/stream-cut1-local-arch.drawio.png)
+
 ### Backend Architecture
+
+The Web App and backend to support running the demonstration has the following components:
 
 ![](./docs/diagrams/backend.drawio.png)
 
+* [See implementation details for developers willing to update this demonstration](./docs/web_app_design.md)
+
+### Demonstration Script
+
+* [See dedicated note](./docs/demo_script.md)
 
 ## Actors
 
@@ -86,7 +97,7 @@ We suppose the user has OrganizatonAdmin role to be able to create environment.
 
 Pre-requisites:
 
-* Login to the console
+* Login to the Confluent Cloud console
 
 #### Create Confluent Cloud Environment
 
@@ -271,6 +282,7 @@ The database has three main tables:
         updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
     )
     ```
+    
 * Transactions:
     ```sql
         CREATE TABLE IF NOT EXISTS transactions (
