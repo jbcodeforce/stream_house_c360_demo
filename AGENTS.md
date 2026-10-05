@@ -13,15 +13,13 @@ This document outlines the architecture, decisions, security practices, and infr
 
 ## 2. Infrastructure as Code (IaC) Layout
 
-Terraform files are organized under the [`IaC/`](IaC/) directory with clear separation of concerns:
+Terraform is organized under the [`IaC/`](IaC/) directory as **three independent root modules** (separate local state), each file-per-concern. This split lets the core Confluent Cloud stack run locally with **no AWS credentials**; AWS and the managed connector are opt-in cost paths.
 
-- [`IaC/provider.tf`](IaC/provider.tf): Required Terraform versions, provider definitions (AWS, Confluent, Random), and provider configurations.
-- [`IaC/variables.tf`](IaC/variables.tf): All input variables, type declarations, descriptions, and sensible defaults (targeting AWS West / `us-west-2`).
-- [`IaC/AWS/provider.tf`](IaC/AWS/provider.tf): Required Terraform versions, provider definitions (AWS, Confluent, Random), and provider configurations.
-- [`IaC/AWS/variables.tf`](IaC/AWS/variables.tf): All input variables, type declarations, descriptions, and sensible defaults (targeting AWS West / `us-west-2`).
-- [`IaC/AWS/data.tf`](IaC/AWS/data.tf): Data sources (Availability Zones, existing VPC, subnets, Confluent Cloud egress IPs).
-- [`IaC/AWS/aws.tf`](IaC/AWS/aws.tf): AWS resource declarations (DB Subnet Group, Security Groups, KMS, Secrets Manager, RDS).
-- [`IaC/AWS/outputs.tf`](IaC/AWS/outputs.tf): Exported attributes (VPC IDs, RDS endpoints, Security Group IDs, Secrets Manager ARN, Confluent egress IPs).
+- [`IaC/ccloud/`](IaC/ccloud/) — **core Confluent Cloud stack (no AWS)**: environment, Kafka cluster, Flink compute pool, Schema Registry, service account + Kafka/SR API keys. Run with [`scripts/tf.sh`](scripts/tf.sh). Needs only `CONFLUENT_CLOUD_API_KEY/SECRET`.
+- [`IaC/connector/`](IaC/connector/) — **managed Debezium Postgres CDC connector + AWS dependency**: reads the core stack's outputs from `../ccloud/terraform.tfstate` via `terraform_remote_state`, and the RDS credentials from AWS Secrets Manager. Run with [`scripts/tf_connector.sh`](scripts/tf_connector.sh) (needs AWS creds). Optional — in local mode the backend app writes Debezium-shaped events directly to `cdc.public.*` topics instead.
+- [`IaC/AWS/`](IaC/AWS/) — **AWS stack**: PostgreSQL RDS 17 (CDC-ready), VPC/subnet lookups, security group (allowlists Confluent egress IPs), KMS, and the Secrets Manager secret consumed by `IaC/connector/`. Files: `provider.tf`, `variables.tf`, `data.tf`, `aws.tf`, `outputs.tf`.
+
+**Apply order:** `IaC/ccloud` (always) → `IaC/AWS` + `IaC/connector` (only for the full CDC-over-AWS path).
 
 ---
 

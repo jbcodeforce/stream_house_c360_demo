@@ -16,24 +16,24 @@ variable "confluent_cloud_api_secret" {
 }
 
 ################################################################################
-# AWS Configuration
+# Cloud / region (used by the Kafka cluster and Flink compute pool)
 ################################################################################
 variable "cloud_provider" {
- type        = string
- description = "region for thge cloud provider"
- default     = "AWS"
+  type        = string
+  description = "Cloud provider for the Kafka cluster and Flink compute pool"
+  default     = "AWS"
 }
 
 variable "aws_region_primary" {
   type        = string
-  description = "AWS region where RDS and Secrets Manager resources reside"
+  description = "Cloud region for the Kafka cluster and Flink compute pool"
   default     = "us-west-2"
 }
 
 variable "prefix" {
   type        = string
   default     = "j9r-jtbd1"
-  description = "prefix for environment" 
+  description = "prefix for environment"
 }
 
 variable "cc_sa_env_mgr" {
@@ -42,27 +42,11 @@ variable "cc_sa_env_mgr" {
 }
 
 ################################################################################
-# AWS Secrets Manager
+# Flink
 ################################################################################
 
-variable "rds_secret_arn" {
-  type        = string
-  description = "ARN of the AWS Secrets Manager secret holding RDS credentials (maps to AWS IaC output: secrets_manager_secret_arn)"
-  sensitive   = true
-}
-
-################################################################################
-# Connector Configuration
-################################################################################
-
-variable "connector_name" {
-  type        = string
-  description = "Display name for the Confluent Cloud managed Debezium PostgreSQL Source V2 connector"
-  default     = "c360-debezium-postgres-source"
-}
-
-variable "kafka_topic_prefix" {
-  type        = string
-  description = "Prefix for Kafka topic names produced by the connector (topics will be <prefix>.public.<table>)"
-  default     = "cdc"
+variable "flink_max_cfu" {
+  type        = number
+  description = "Maximum CFUs (Confluent Flink Units) for the Flink compute pool"
+  default     = 5
 }

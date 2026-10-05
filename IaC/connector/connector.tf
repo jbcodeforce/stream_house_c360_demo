@@ -1,21 +1,26 @@
 ################################################################################
 # Debezium PostgreSQL Source V2 — Managed Connector
+#
+# Split out of the core IaC/ccloud stack so that stack provisions no AWS
+# resources. This stack reads the core environment / Kafka cluster / Kafka API
+# key from ../ccloud state (see data.tf) and the RDS credentials from AWS
+# Secrets Manager, then creates the managed connector.
 ################################################################################
 
 resource "confluent_connector" "debezium_postgres" {
   environment {
-    id = confluent_environment.env.id
+    id = local.environment_id
   }
 
   kafka_cluster {
-    id = confluent_kafka_cluster.kcl.id
+    id = local.kafka_cluster_id
   }
 
   # Sensitive config is stored separately so Terraform keeps the password
   # out of the plan diff and marks the block as sensitive in state.
   config_sensitive = {
     "database.password" = local.rds_password
-    "kafka.api.secret"  = confluent_api_key.kcl-kafka-api-key.secret
+    "kafka.api.secret"  = local.kafka_api_key_secret
   }
 
   # All non-sensitive connector properties
@@ -28,13 +33,13 @@ resource "confluent_connector" "debezium_postgres" {
     # Must be the cluster-scoped key (paired with its secret in config_sensitive),
     # not the org-level Cloud API key used for the Terraform provider.
     "kafka.auth.mode" = "KAFKA_API_KEY"
-    "kafka.api.key"   = confluent_api_key.kcl-kafka-api-key.id
+    "kafka.api.key"   = local.kafka_api_key_id
 
     # Required by the managed connector runtime to locate and authenticate
     # the Kafka cluster. endpoint comes from the cluster bootstrap_endpoint
     # (which already carries the SASL_SSL:// scheme); region and cloud
     # are derived from the variables already used for cluster provisioning.
-    "kafka.endpoint"    = confluent_kafka_cluster.kcl.bootstrap_endpoint
+    "kafka.endpoint"    = local.kafka_bootstrap_endpoint
     "kafka.region"      = var.aws_region_primary
     "cloud.environment" = "prod"
     "cloud.provider"    = lower(var.cloud_provider)

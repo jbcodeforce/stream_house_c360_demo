@@ -1,0 +1,27 @@
+# terraform.tfvars.example
+# Copy to terraform.tfvars and fill in real values.
+# Do NOT commit terraform.tfvars to version control.
+#
+# This stack creates the managed Debezium Postgres CDC connector. It depends on:
+#   1. IaC/ccloud applied first (environment, Kafka cluster, Kafka API key) —
+#      its outputs are read from ../ccloud/terraform.tfstate automatically.
+#   2. IaC/AWS applied first (RDS + the credentials secret below).
+
+# ── Confluent Cloud credentials ────────────────────────────────────────────────
+# Obtain from: Confluent Cloud Console → API Keys
+# (or export CONFLUENT_CLOUD_API_KEY / CONFLUENT_CLOUD_API_SECRET instead)
+confluent_cloud_api_key    = "REPLACE_WITH_API_KEY"
+confluent_cloud_api_secret = "REPLACE_WITH_API_SECRET"
+
+# ── AWS configuration ──────────────────────────────────────────────────────────
+aws_region_primary = "us-west-2"
+
+# ARN of the RDS credentials secret created by IaC/AWS.
+# Get it with: terraform -chdir=../AWS output secrets_manager_secret_arn
+rds_secret_arn = "arn:aws:secretsmanager:us-west-2:123456789012:secret:c360-demo-rds-credentials-XXXXXX"
+
+# ── Optional overrides (defaults shown) ───────────────────────────────────────
+# core_state_path    = "../ccloud/terraform.tfstate"
+# connector_name     = "c360-debezium-postgres-source"
+# kafka_topic_prefix = "cdc"
+# cloud_provider     = "AWS"

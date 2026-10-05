@@ -5,25 +5,15 @@
 cc_sa_env_mgr = "REPLACE"
 # ── Confluent Cloud credentials ────────────────────────────────────────────────
 # Obtain from: Confluent Cloud Console → API Keys
+# (or export CONFLUENT_CLOUD_API_KEY / CONFLUENT_CLOUD_API_SECRET instead)
 confluent_cloud_api_key    = "REPLACE_WITH_API_KEY"
 confluent_cloud_api_secret = "REPLACE_WITH_API_SECRET"
 
-# ── Existing Confluent Cloud resources ─────────────────────────────────────────
-# Confluent Cloud Console → Environments → select environment → copy ID (env-...)
-#confluent_environment_id = "env-XXXXXX"
-
-# Confluent Cloud Console → select cluster → Settings → copy Cluster ID (lkc-...)
-#confluent_kafka_cluster_id = "lkc-XXXXXX"
-
-# ── AWS configuration ──────────────────────────────────────────────────────────
+# ── Cloud / region (Kafka cluster + Flink compute pool) ─────────────────────────
 aws_region_primary = "us-west-2"
 
-# ARN of the RDS credentials secret created by IaC/AWS.
-# Get it with: terraform -chdir=IaC/AWS output secrets_manager_secret_arn
-rds_secret_arn = "arn:aws:secretsmanager:us-west-2:123456789012:secret:c360-demo-rds-credentials-XXXXXX"
-
 # ── Optional overrides (defaults shown) ───────────────────────────────────────
-# connector_name       = "c360-debezium-postgres-source"
-# cdc_publication_name = "c360_cdc_publication"
-# cdc_slot_name        = "c360_debezium_slot"
-# kafka_topic_prefix   = "c360"
+# flink_max_cfu = 5
+
+# NOTE: the Kafka connector and its AWS RDS dependency now live in IaC/connector/.
+# This core stack provisions no AWS resources and needs no AWS credentials.

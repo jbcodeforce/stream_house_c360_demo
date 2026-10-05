@@ -20,5 +20,6 @@ export ENVIRONMENT_ID=$(terraform output -raw environment_id)
 export KAFKA_API_KEY=$(terraform output -raw kafka_api_key_id)
 export KAFKA_API_SECRET=$(terraform output -raw kafka_api_key_secret)
 export KAFKA_BOOTSTRAP_SERVERS=$(terraform output -raw kafka_bootstrap_endpoint)
+export FLINK_COMPUTE_POOL_ID=$(terraform output -raw flink_compute_pool_id)
 echo "----------------"
 printenv

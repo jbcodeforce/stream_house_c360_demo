@@ -50,16 +50,11 @@ output "sa_name" {
 }
 
 # ------------------------------------------------------
-# Kafka Connector
+# Flink
 # ------------------------------------------------------
-output "connector_id" {
-  description = "ID of the Debezium PostgreSQL Source V2 managed connector"
-  value       = confluent_connector.debezium_postgres.id
-}
-
-output "connector_status" {
-  description = "Current status of the Debezium PostgreSQL Source V2 managed connector"
-  value       = confluent_connector.debezium_postgres.status
+output "flink_compute_pool_id" {
+  description = "ID of the Flink compute pool"
+  value       = confluent_flink_compute_pool.pool.id
 }
 
 

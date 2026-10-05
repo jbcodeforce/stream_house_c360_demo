@@ -6,7 +6,15 @@ terraform {
       source  = "confluentinc/confluent"
       version = "~> 2.88.0"
     }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
   }
+}
+
+provider "aws" {
+  region = var.aws_region_primary
 }
 
 provider "confluent" {
