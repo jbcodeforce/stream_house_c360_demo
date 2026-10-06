@@ -74,6 +74,28 @@ When enabled, `create`/`update`/`delete` on the Postgres path emit a
 best-effort Kafka event (`c`/`u`/`d`); a produce failure is logged and never
 fails the DB operation. The `SINK=kafka` path is unaffected.
 
+### CDC ownership guard (`CDC_CONNECTOR_ENABLED`)
+
+The runtime toggle above is the right control for **local mode** (local Docker
+Postgres, no connector): the app is the only producer, so turn it on to emit
+Debezium-shaped events to `cdc.public.*`.
+
+For **RDS / remote PostgreSQL**, a managed Debezium CDC connector reads the WAL
+and publishes `cdc.public.*` itself. The app must therefore **never** also emit,
+or every change is published twice. The env setting `CDC_CONNECTOR_ENABLED`
+(default `false`) is a hard guard: when `true`, `_maybe_emit` returns before the
+runtime toggle is even consulted, so emission is off regardless of
+`kafka_produce_enabled`.
+
+| Deployment                         | `CDC_CONNECTOR_ENABLED` | App emits Kafka?                     |
+| ---------------------------------- | ----------------------- | ----------------------------------- |
+| Local Postgres, no connector       | `false` (default)       | Only if runtime toggle is on        |
+| RDS / remote PG + CDC connector    | `true`                  | Never (connector owns `cdc.public.*`) |
+
+Set it per deployment: `scripts/set_env_from_tf.sh` exports `true` for the RDS
+path, and `scripts/run_dev.sh --db rds` forces `true`. The `SINK=kafka` path is
+unaffected (it has no Postgres and no connector).
+
 ## Testing
 
 1. Start the container

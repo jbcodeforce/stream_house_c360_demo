@@ -62,19 +62,13 @@ RDS storage is encrypted with KMS Customer Managed Key and DB secrets. Database 
 
 Run this stack through the [`scripts/tf_aws.sh`](../scripts/tf_aws.sh) wrapper rather than calling `terraform` directly. The wrapper handles two credential gotchas that make a bare `terraform plan` fail:
 
-- **AWS**: SSO profiles often store temporary (`ASIA…`) keys *without* an
-  `aws_session_token` in the shared files. The AWS CLI still works from its SSO
-  cache, but Terraform's provider rejects the incomplete set (`No valid credential
-  sources found`). The wrapper refreshes the SSO token if needed and exports the full
-  key + secret + session-token triple into the environment. It also verifies the
-  resolved account matches the expected one (`829250931565` by default; override with
-  `EXPECTED_AWS_ACCOUNT_ID`) and fails fast if a similarly-named profile lands in the
-  wrong account — e.g. `829250931565_nonprod-administrator` actually resolves to
-  `898188061957`, so use `AWS_PROFILE=default` (or another profile in the right account).
-- **Confluent**: the security group ingress is built from the Confluent Cloud egress
-  IPs, so the Confluent provider needs `cloud_api_key` / `cloud_api_secret`. Export
-  `CONFLUENT_CLOUD_API_KEY` and `CONFLUENT_CLOUD_API_SECRET` before running the
-  wrapper; it defensively strips any incomplete native Schema Registry / Flink env
+- **AWS**: SSO profiles often store temporary (`ASIA…`) keys *without* an `aws_session_token` in the shared files. The AWS CLI still works from its SSO
+  cache, but Terraform's provider rejects the incomplete set (`No valid credential sources found`). The wrapper refreshes the SSO token if needed and exports the full
+  key + secret + session-token triple into the environment. It also verifies the resolved account matches the expected one (`829250931565` by default; override with
+  `EXPECTED_AWS_ACCOUNT_ID`) and fails fast if a similarly-named profile lands in the wrong account — e.g. `829250931565_nonprod-administrator` actually resolves to
+  `898188061957`, so use `AWS_PROFILE=default` (or another profile in the right account). 
+- **Confluent**: the security group ingress is built from the Confluent Cloud egress IPs, so the Confluent provider needs `cloud_api_key` / `cloud_api_secret`. Export
+  `CONFLUENT_CLOUD_API_KEY` and `CONFLUENT_CLOUD_API_SECRET` before running the wrapper; it defensively strips any incomplete native Schema Registry / Flink env
   vars that would otherwise trip the provider's all-or-none validation.
 
 ```sh
@@ -90,7 +84,7 @@ scripts/tf_aws.sh output
 
 The output gives us the following:
 
-```
+```sh
 db_security_group_id = "sg-...."
 db_subnet_group_name = "c360-j9r-db-subnet-group"
 rds_address = ".....rds.amazonaws.com"
@@ -178,7 +172,7 @@ It is possible to retrieve the secret ARN from secrets manager:
 
 * Execute the following commands in sequence:
 
-```
+```sh
 ./scripts/tf_connector.sh init
 
 ./scripts/tf_connector.sh plan
@@ -194,3 +188,28 @@ It is possible to retrieve the secret ARN from secrets manager:
 
 * And have some records
   ![](./images/ccloud/cdc_cust_records.png)
+
+### Backend must not dual-write to Kafka
+
+Once the CDC connector is running, it is the **only** writer of the
+`cdc.public.*` topics. The backend keeps writing to RDS (the source of truth)
+but must **not** also emit Kafka events — otherwise every change is published
+twice (once by the app, once by the connector).
+
+This is enforced by the `CDC_CONNECTOR_ENABLED` setting (see
+[`apps/backend/README.md`](../apps/backend/README.md#cdc-ownership-guard-cdc_connector_enabled)).
+When `true`, the backend never emits, regardless of the runtime
+`kafka_produce_enabled` toggle. It is wired up automatically on the RDS path:
+
+```sh
+# Exports DATABASE_URL (RDS) and CDC_CONNECTOR_ENABLED=true for the shell:
+source scripts/set_env_from_tf.sh
+./scripts/run_dev.sh            # honors the exported RDS config
+
+# Or force the RDS target explicitly (also sets CDC_CONNECTOR_ENABLED=true):
+./scripts/run_dev.sh --db rds
+```
+
+Only **local mode** (local Postgres, no connector) should emit from the app:
+leave `CDC_CONNECTOR_ENABLED=false` (the default) and flip the runtime toggle on
+when you want the app to produce Debezium-shaped events directly.

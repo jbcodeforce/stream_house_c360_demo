@@ -11,6 +11,7 @@ import logging
 from uuid import UUID
 
 import config_store
+from config import settings
 from transactions import db_sink, kafka_producer
 from transactions.models import Transaction, TransactionCreate
 
@@ -20,6 +21,9 @@ _EMIT_FLUSH_TIMEOUT = 5.0
 
 
 def _maybe_emit(txn: Transaction) -> None:
+    if settings.CDC_CONNECTOR_ENABLED:
+        # A CDC connector (RDS / remote PG) owns Kafka; never dual-write.
+        return
     if not config_store.get_config().kafka_produce_enabled:
         return
     try:

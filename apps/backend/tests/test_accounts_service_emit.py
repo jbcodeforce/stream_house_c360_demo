@@ -65,6 +65,26 @@ def test_create_does_not_emit_when_disabled(svc, monkeypatch):
     svc.kafka_producer.produce_create.assert_not_called()
 
 
+def test_cdc_connector_suppresses_emit_despite_runtime_toggle(svc, monkeypatch):
+    # RDS / remote PG: the CDC connector owns Kafka, so the app must not emit
+    # even when the runtime toggle is ON.
+    a = _account()
+    svc.db_sink.create.return_value = a
+    svc.db_sink.update.return_value = a
+    svc.db_sink.get_by_id.return_value = a
+    svc.db_sink.delete_by_id.return_value = True
+    _enable(monkeypatch, True)
+    monkeypatch.setattr(svc.settings, "CDC_CONNECTOR_ENABLED", True)
+
+    svc.create(_create_payload())
+    svc.update(a.account_id, AccountUpdate(status="CLOSED"))
+    svc.delete_by_id(a.account_id)
+
+    svc.kafka_producer.produce_create.assert_not_called()
+    svc.kafka_producer.produce_update.assert_not_called()
+    svc.kafka_producer.produce_delete.assert_not_called()
+
+
 def test_update_skips_emit_when_no_row(svc, monkeypatch):
     svc.db_sink.update.return_value = None
     _enable(monkeypatch, True)

@@ -2,9 +2,39 @@
 
 This note is for explaining the code of the backend and vite application.
 
+## 
 
 
+The architecture is:
 
+![](./diagrams/stream-cut1-local-arch.drawio.png)
+
+## Execute during development
+
+
+* Start the database server
+    ```sh
+    cd apps/backend
+    ./start_local_pg_server.sh
+    ```
+
+* Start the backend
+    ```sh
+    cd app/backend
+    uv run uvicorn main:app --reload 
+    ```
+
+    Access to REST API: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+
+* Start the user interface
+    ```sh
+    cd apps/frontend
+    npm run dev
+    ```
+
+    Access to the webapp: [http://localhost:5173/](http://localhost:5173/)
+    
 ## Database schema
 
 The database has three main tables:

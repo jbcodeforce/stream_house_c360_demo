@@ -31,6 +31,9 @@ def _maybe_emit(op: str, customer: Customer) -> None:
     truth and the DB operation must not fail (or hang) because Kafka is
     unavailable, so emission uses a bounded flush timeout.
     """
+    if settings.CDC_CONNECTOR_ENABLED:
+        # A CDC connector (RDS / remote PG) owns Kafka; never dual-write.
+        return
     if not config_store.get_config().kafka_produce_enabled:
         return
     try:

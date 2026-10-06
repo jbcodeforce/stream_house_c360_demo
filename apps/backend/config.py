@@ -6,6 +6,13 @@ class Settings(BaseSettings):
 
     SINK: str = "postgres"
 
+    # When True, a managed CDC connector (Debezium on RDS / remote PostgreSQL)
+    # owns publishing to the cdc.public.* topics, so the backend must NOT also
+    # dual-write Kafka events — doing so would double-publish. This hard guard
+    # overrides the runtime ``kafka_produce_enabled`` toggle. Keep False for
+    # local mode (no connector), where the app is the only Kafka producer.
+    CDC_CONNECTOR_ENABLED: bool = False
+
     DATABASE_URL: str | None = None
     KAFKA_BOOTSTRAP_SERVERS: str | None = None
     KAFKA_API_KEY: str | None = None

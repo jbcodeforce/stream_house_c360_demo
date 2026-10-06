@@ -1,58 +1,67 @@
 # Demonstration Script
 
 Two approaches: 
+
 1. local database, writing directly to Kafka topics defined within Confluent Cloud Kafka Cluster
 2. Run Database on AWS, with Kafka Connector defined to get data from the database to Kafka topics. This approach has cost for the services on AWS.
 
-## Get started locally
+The web application is able to write to remote database or work with local database and remote Kafka.
 
-The architecture is:
+## Run with a remote database server
 
-![](./diagrams/stream-cut1-local-arch.drawio.png)
+The architecture of the demonstration at the high-level looks like:
 
-* Set .env under the apps/backend, by copying from `.env.example`
+![](./diagrams/rds_execution.drawio.png)
+
+* Once the Confluent Cloud and AWS resources are created by Terraform, the user starts the local web application that connect to remote database server.
+
+* Set environment variables to access Confluent Cloud resources, like Kafka, schema KEY/secrets and bootstrap address:
     ```sh
-    cd app/backend
-    cp .env.example .env
+    source ./scripts/set_env_from_tf.sh
     ```
 
-* Start the database server
+* Start the local webapp with remote database
     ```sh
-    cd apps/backend
-    ./start_local_pg_server.sh
+    ./scripts/run_dev.sh --db rds
     ```
 
-* Start the backend
+* [Follow with demonstration script](#demonstration-script)
+
+## Run with Local Database Get started locally
+
+![](./diagrams/local_execution.drawio.png)
+
+* Set environment variables to access Confluent Cloud resources, like Kafka, schema KEY/secrets and bootstrap address:
     ```sh
-    cd app/backend
-    uv run uvicorn main:app --reload 
+    source ./scripts/set_env_from_tf.sh
     ```
 
-    Access to REST API: [http://localhost:8000/docs](http://localhost:8000/docs)
-
-
-* Start the user interface
+* Start the local webapp
     ```sh
-    cd apps/frontend
-    npm run dev
+    ./scripts/run_dev.sh 
     ```
 
-    Access to the webapp: [http://localhost:5173/](http://localhost:5173/)
 
 ### Customers Management
 
+The customers page presents a list of customers in the real database:
+
 ![](./images/customers_page.png)
 
+It is possible to add a new customer, or update an existing one.
 
 ### Accounts Management
+
+The accounts page presents a list of account per customer in the real database:
 
 ![](./images/web_accounts.png)
 
 
 ### Transaction Management
 
-![](./images/web_tx.png)
+The transactions page presents a list of current transactions in the real database:
 
+![](./images/web_tx.png)
 
 
 ### Verify data are in tables. 

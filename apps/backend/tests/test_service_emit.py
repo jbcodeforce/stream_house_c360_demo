@@ -63,6 +63,26 @@ def test_create_does_not_emit_when_disabled(pg, monkeypatch):
     pg.kafka_producer.produce_create.assert_not_called()
 
 
+def test_cdc_connector_suppresses_emit_despite_runtime_toggle(pg, monkeypatch):
+    # When a CDC connector owns Kafka (RDS / remote PG), the app must never
+    # dual-write — even if the runtime toggle was left ON — to avoid double
+    # publishing to cdc.public.*.
+    pg.db_sink.create.return_value = _customer()
+    pg.db_sink.get_by_id.return_value = _customer()
+    pg.db_sink.delete_by_id.return_value = True
+    pg.db_sink.update.return_value = _customer()
+    _enable(monkeypatch, True)
+    monkeypatch.setattr(pg.settings, "CDC_CONNECTOR_ENABLED", True)
+
+    pg.create(CustomerCreate(first_name="Ada", last_name="L", email="a@b.c"))
+    pg.update(uuid4(), CustomerUpdate(city="NYC"))
+    pg.delete_by_id(uuid4())
+
+    pg.kafka_producer.produce_create.assert_not_called()
+    pg.kafka_producer.produce_update.assert_not_called()
+    pg.kafka_producer.produce_delete.assert_not_called()
+
+
 def test_update_skips_emit_when_no_row(pg, monkeypatch):
     pg.db_sink.update.return_value = None
     _enable(monkeypatch, True)
