@@ -38,7 +38,7 @@ def client():
 
     # Import everything fresh (modules may already be loaded from kafka suite)
     import config
-    import customers.db_sink as db_sink
+    import db
     import customers.kafka_producer as kafka_producer
     import main  # noqa: PLC0415
 
@@ -48,13 +48,16 @@ def client():
     config.settings.SINK = "postgres"
     config.settings.DATABASE_URL = database_url
 
-    # Reset the connection pool so it re-connects with the correct URL
-    if db_sink._pool is not None:
-        try:
-            db_sink._pool.closeall()
-        except Exception:
-            pass
-        db_sink._pool = None
+    # Reset the shared connection pool so it re-connects with the correct URL
+    def _reset_pool():
+        if db._pool is not None:
+            try:
+                db._pool.closeall()
+            except Exception:
+                pass
+            db._pool = None
+
+    _reset_pool()
 
     with TestClient(main.app) as test_client:
         yield test_client
@@ -62,12 +65,7 @@ def client():
     # Restore settings
     config.settings.SINK = original_sink
     config.settings.DATABASE_URL = original_db_url
-    if db_sink._pool is not None:
-        try:
-            db_sink._pool.closeall()
-        except Exception:
-            pass
-        db_sink._pool = None
+    _reset_pool()
 
 
 # ---------------------------------------------------------------------------

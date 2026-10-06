@@ -42,21 +42,31 @@ Terraform is organized under the [`IaC/`](IaC/) directory as **three independent
    - Custom parameter group enforces TLS (`rds.force_ssl = 1`) and enables `rds.logical_replication = 1` to support real-time Change Data Capture (Debezium / Confluent Kafka Connect / Flink).
    - Automated backups (7-day retention) and CloudWatch log exports (`postgresql`, `upgrade`).
 
-### Customer 360 Schema Bootstrap (scripts/db/)
+### Customer 360 Schema Bootstrap (backend-owned)
 
-Python scripts to create and seed the PostgreSQL schema live under [`scripts/db/`](scripts/db/).
-They are managed as a **uv project** (`pyproject.toml` + `uv.lock`).
+The backend is the single source of truth for the schema, the `c360_cdc_publication`
+logical replication publication, and the seed data. On startup with `SINK=postgres`,
+the FastAPI lifespan runs [`apps/backend/bootstrap.py`](apps/backend/bootstrap.py),
+which, for `customers` → `accounts` → `transactions` (FK order):
 
-- [`scripts/db/create_tables.py`](scripts/db/create_tables.py): Creates `customers`, `accounts`, `transactions` tables, indexes, `updated_at` triggers, and the `c360_cdc_publication` logical replication publication.
-- [`scripts/db/seed_data.py`](scripts/db/seed_data.py): Inserts realistic synthetic records (Faker-generated) — configurable volume via `--customers N`.
+- creates the table, indexes, and `updated_at` triggers (`CREATE ... IF NOT EXISTS`);
+- adds the table to `c360_cdc_publication` (created if absent);
+- seeds from the committed CSV in each service's `data/` directory, only if the table is empty.
 
-Run order:
+Everything is idempotent, so it runs on every startup. To bootstrap **any** Postgres
+(RDS included) without starting the API, run the same orchestration directly:
+
 ```bash
-cd scripts/db
-uv sync
-uv run python create_tables.py --secret-arn <arn>
-uv run python seed_data.py     --secret-arn <arn> --customers 100
+cd apps/backend
+DATABASE_URL="postgresql://<user>:<pw>@<host>:5432/<db>?sslmode=require" SINK=postgres \
+  uv run python bootstrap.py
 ```
+
+Two prerequisites stay outside the app: the RDS parameter group must set
+`rds.logical_replication = 1` (see above), and the RDS secret must be supplied to the
+backend as `DATABASE_URL`. The schema's field definitions live in each service's
+`db_sink.py`; shared connection/transaction/seed mechanics live in
+[`apps/backend/db.py`](apps/backend/db.py).
 
 ### Local Testing (scripts/local-tests/)
 

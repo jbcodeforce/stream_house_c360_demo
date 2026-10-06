@@ -6,6 +6,7 @@ from datetime import date, datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import db
 from accounts import db_sink
 from accounts.models import Account
 
@@ -29,15 +30,15 @@ def _fake_conn(count: int):
 
 
 def test_seed_noop_on_empty_list():
-    with patch.object(db_sink, "_get_conn") as get:
+    with patch.object(db, "get_conn") as get:
         db_sink.seed_from_csv([])
         get.assert_not_called()
 
 
 def test_seed_inserts_when_table_empty():
     conn, cur = _fake_conn(count=0)
-    with patch.object(db_sink, "_get_conn", return_value=conn), \
-         patch.object(db_sink, "_put_conn"):
+    with patch.object(db, "get_conn", return_value=conn), \
+         patch.object(db, "put_conn"):
         db_sink.seed_from_csv([_account(), _account()])
     # one COUNT select + one insert per account
     assert cur.execute.call_count == 3
@@ -46,8 +47,8 @@ def test_seed_inserts_when_table_empty():
 
 def test_seed_skips_when_table_not_empty():
     conn, cur = _fake_conn(count=5)
-    with patch.object(db_sink, "_get_conn", return_value=conn), \
-         patch.object(db_sink, "_put_conn"):
+    with patch.object(db, "get_conn", return_value=conn), \
+         patch.object(db, "put_conn"):
         db_sink.seed_from_csv([_account()])
     assert cur.execute.call_count == 1       # only the COUNT, no inserts
     conn.commit.assert_not_called()
@@ -59,8 +60,8 @@ def test_seed_swallows_integrity_error_and_rolls_back():
     import psycopg2
     conn, cur = _fake_conn(count=0)
     cur.execute.side_effect = [None, psycopg2.IntegrityError("fk violation")]
-    with patch.object(db_sink, "_get_conn", return_value=conn), \
-         patch.object(db_sink, "_put_conn"):
+    with patch.object(db, "get_conn", return_value=conn), \
+         patch.object(db, "put_conn"):
         db_sink.seed_from_csv([_account()])  # must NOT raise
     conn.rollback.assert_called_once()
     conn.commit.assert_not_called()

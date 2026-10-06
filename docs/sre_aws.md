@@ -1,30 +1,36 @@
 # AWS Resources
 
+This section of the documentation is to create AWS resources for the end-to-end Streamhouse demonstration with source database, S3 buckets and Catalog.
 
 Terraform is organized under the [`IaC/`](IaC/) directory as **three independent root modules** (separate local state), each file-per-concern. This split lets the core Confluent Cloud stack run locally with **no AWS credentials**; AWS and the managed connector are opt-in cost paths.
 
-
-- [`IaC/connector/`](IaC/connector/) — **managed Debezium Postgres CDC connector + AWS dependency**: reads the core stack's outputs from `../ccloud/terraform.tfstate` via `terraform_remote_state`, and the RDS credentials from AWS Secrets Manager. Run with [`scripts/tf_connector.sh`](scripts/tf_connector.sh) (needs AWS creds). Optional — in local mode the backend app writes Debezium-shaped events directly to `cdc.public.*` topics instead.
 - [`IaC/AWS/`](IaC/AWS/) — **AWS stack**: PostgreSQL RDS 17 (CDC-ready), VPC/subnet lookups, security group (allowlists Confluent egress IPs), KMS, and the Secrets Manager secret consumed by `IaC/connector/`. Files: `provider.tf`, `variables.tf`, `data.tf`, `aws.tf`, `outputs.tf`.
 
-**Apply order:** `IaC/ccloud` (always) → `IaC/AWS` + `IaC/connector` (only for the full CDC-over-AWS path).
+- [`IaC/connector/`](IaC/connector/) — managed Debezium Postgres CDC connector on Confluent cloud: reads the core stack's outputs from `../ccloud/terraform.tfstate` via `terraform_remote_state`, and the RDS credentials from AWS Secrets Manager. Run with [`scripts/tf_connector.sh`](scripts/tf_connector.sh) (needs AWS creds). Optional — in local mode the backend app writes Debezium-shaped events directly to `cdc.public.*` topics instead.
+
+**Apply order:** `IaC/ccloud` → `IaC/AWS` →  `IaC/connector.
 
 
-We will not detail how to use the AWS Console to create RDS Postgresql instance and access VPC information. The [terraform section](#aws-resources-rds-postgresql) below describres how to automate the creation of those resources.
+The resources created are illustrated in following figure:
+
+![](./diagrams/aws-rds.drawio.png)
+
 
 ### Pre-requisites
 
-* Get Terraform cli
-* Get aws CLI
+* Get [Terraform cli](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
+* Get [aws CLI](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
 * Get psql client to query Postgresql instance:
     ```
     brew install libpq
     ```
-* Login to AWS console, search for the VPC to use
+
+* Login to AWS console using one of your profile aved in `~/.aws/credentials` 
     ```sh
     aws sso login --profile your-profile-name
     export AWS_PROFILE="your-profile-name"
     ```
+    
 * Find you the public IP address of your machine: [https://checkip.amazonaws.com](https://checkip.amazonaws.com)
 * Modify terraform environment variables `terraform.tfvars` with:
     ```sh
@@ -133,13 +139,26 @@ vpc_cidr_block = "10......"
 vpc_id = "vpc-...."
 ```
 
-Once the database is up and running, we can get the public SSL certificate to download from the AWS Console.
-
-Then running the following will create the tables and the seed test data:
+Once the database is up and running, the backend creates the tables, the
+`c360_cdc_publication`, and seeds the committed CSV dataset on startup — there is no
+separate schema/seed script. Build `DATABASE_URL` from the RDS secret and run the
+backend bootstrap (or just start the API with `SINK=postgres`):
 
 ```sh
-uv run python seed_data.py --secret-arn "arn:aws:secretsmanager:u...." --ssl-root-cert ~/.ssh/global-bundle.pem
+# Pull the RDS credentials emitted into Secrets Manager by Terraform
+export RDSHOST="c360-....rds.amazonaws.com"
+DB_PASSWORD=$(aws secretsmanager get-secret-value \
+  --secret-id arn:aws:secretsmanager:us-west-2:...:secret:c360-... \
+  --query SecretString --output text | jq -r .password)
+
+cd apps/backend
+DATABASE_URL="postgresql://dbadmin:${DB_PASSWORD}@${RDSHOST}:5432/c360db?sslmode=require" \
+SINK=postgres \
+  uv run python bootstrap.py
 ```
+
+The bootstrap is idempotent, so it is safe to re-run. The CDC publication now covers
+all three tables (`customers`, `accounts`, `transactions`).
 
 #### Use psql to verify data in RDS
 

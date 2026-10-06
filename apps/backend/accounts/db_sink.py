@@ -1,45 +1,24 @@
-"""PostgreSQL sink for the accounts service."""
+"""PostgreSQL sink for the accounts service.
+
+Schema initialisation plus CRUD, built on the shared connection pool and
+helpers in :mod:`db`. This module owns only the accounts-specific DDL,
+column list and row mapping.
+"""
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-import psycopg2
 import psycopg2.errors
-import psycopg2.extras
-import psycopg2.pool
 from fastapi import HTTPException
 
+import db
 from accounts.models import Account, AccountCreate, AccountUpdate
-from config import settings
 
-logger = logging.getLogger("c360.accounts.db_sink")
-
-_pool: psycopg2.pool.SimpleConnectionPool | None = None
-
-
-def _ensure_pool() -> psycopg2.pool.SimpleConnectionPool:
-    global _pool
-    if _pool is None:
-        url = settings.DATABASE_URL
-        if url is None:
-            raise RuntimeError("DATABASE_URL is not configured")
-        if "sslmode=" not in url:
-            sep = "&" if "?" in url else "?"
-            url = f"{url}{sep}sslmode=prefer"
-        _pool = psycopg2.pool.SimpleConnectionPool(minconn=1, maxconn=5, dsn=url)
-    return _pool
-
-
-def _get_conn():
-    return _ensure_pool().getconn()
-
-
-def _put_conn(conn) -> None:
-    _ensure_pool().putconn(conn)
-
+# ---------------------------------------------------------------------------
+# Schema
+# ---------------------------------------------------------------------------
 
 _DDL_STATEMENTS = [
     """
@@ -85,111 +64,46 @@ _INSERT_COLS = (
     "account_id, customer_id, account_number, account_type, currency, balance, "
     "credit_limit, opened_date, closed_date, status, created_at, updated_at"
 )
+_PLACEHOLDERS = ", ".join(["%s"] * 12)
+_SEED_SQL = (
+    f"INSERT INTO accounts ({_INSERT_COLS}) VALUES ({_PLACEHOLDERS}) "
+    f"ON CONFLICT (account_id) DO NOTHING"
+)  # noqa: S608 — static column list
+_INSERT_RETURNING_SQL = (
+    f"INSERT INTO accounts ({_INSERT_COLS}) VALUES ({_PLACEHOLDERS}) RETURNING *"
+)  # noqa: S608 — static column list
 
+
+def _insert_params(a: Account) -> tuple:
+    return (
+        str(a.account_id), str(a.customer_id), a.account_number, a.account_type,
+        a.currency, a.balance, a.credit_limit, a.opened_date, a.closed_date,
+        a.status, a.created_at, a.updated_at,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 def init_db() -> None:
-    conn = _get_conn()
-    try:
-        conn.autocommit = False
-        with conn.cursor() as cur:
-            for stmt in _DDL_STATEMENTS:
-                cur.execute(stmt)
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
+    db.init_schema(_DDL_STATEMENTS, cdc_table="accounts")
 
 
 def seed_from_csv(accounts: list[Account]) -> None:
-    """Bulk-insert *accounts* only when the table is currently empty.
-
-    Uses ON CONFLICT DO NOTHING so re-running is safe.
-    """
-    if not accounts:
-        return
-
-    conn = _get_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM accounts")
-            count = cur.fetchone()[0]
-            if count > 0:
-                return
-
-            insert_sql = f"""
-                INSERT INTO accounts ({_INSERT_COLS})
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (account_id) DO NOTHING
-            """  # noqa: S608 — static column list
-            for account in accounts:
-                cur.execute(insert_sql, (
-                    str(account.account_id),
-                    str(account.customer_id),
-                    account.account_number,
-                    account.account_type,
-                    account.currency,
-                    account.balance,
-                    account.credit_limit,
-                    account.opened_date,
-                    account.closed_date,
-                    account.status,
-                    account.created_at,
-                    account.updated_at,
-                ))
-        conn.commit()
-    except psycopg2.IntegrityError:
-        # e.g. a FK violation when the referenced customers were not seeded
-        # from the same CSV. Skip seeding rather than crash app startup.
-        conn.rollback()
-        logger.warning(
-            "Skipping accounts seed: integrity error (are customers seeded from the CSV?)",
-            exc_info=True,
-        )
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
+    db.seed_if_empty("accounts", accounts, _SEED_SQL, _insert_params, label="accounts")
 
 
 def create(data: AccountCreate) -> Account:
     now = datetime.now(tz=timezone.utc)
-    account_id = uuid4()
-    insert_sql = f"""
-        INSERT INTO accounts ({_INSERT_COLS})
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING *
-    """  # noqa: S608 — static column list
-    conn = _get_conn()
+    account = Account(account_id=uuid4(), created_at=now, updated_at=now, **data.model_dump())
     try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(insert_sql, (
-                str(account_id),
-                str(data.customer_id),
-                data.account_number,
-                data.account_type,
-                data.currency,
-                data.balance,
-                data.credit_limit,
-                data.opened_date,
-                data.closed_date,
-                data.status,
-                now,
-                now,
-            ))
+        with db.cursor(dict_rows=True, commit=True) as cur:
+            cur.execute(_INSERT_RETURNING_SQL, _insert_params(account))
             row = cur.fetchone()
-        conn.commit()
         return Account(**row)
     except psycopg2.errors.UniqueViolation as exc:
-        conn.rollback()
         raise HTTPException(status_code=409, detail="An account with that account number already exists") from exc
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
 
 
 def update(account_id: UUID, data: AccountUpdate) -> Account | None:
@@ -203,52 +117,27 @@ def update(account_id: UUID, data: AccountUpdate) -> Account | None:
     values = list(fields.values()) + [str(account_id)]
     sql = f"UPDATE accounts SET {set_clause} WHERE account_id = %s RETURNING *"  # noqa: S608 — columns from model field names only
 
-    conn = _get_conn()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(sql, values)
-            row = cur.fetchone()
-        conn.commit()
-        return Account(**row) if row else None
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
+    with db.cursor(dict_rows=True, commit=True) as cur:
+        cur.execute(sql, values)
+        row = cur.fetchone()
+    return Account(**row) if row else None
 
 
 def get_by_id(account_id: UUID) -> Account | None:
-    conn = _get_conn()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM accounts WHERE account_id = %s", (str(account_id),))
-            row = cur.fetchone()
-        return Account(**row) if row else None
-    finally:
-        _put_conn(conn)
+    with db.cursor(dict_rows=True) as cur:
+        cur.execute("SELECT * FROM accounts WHERE account_id = %s", (str(account_id),))
+        row = cur.fetchone()
+    return Account(**row) if row else None
 
 
 def list_all() -> list[Account]:
-    conn = _get_conn()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM accounts ORDER BY created_at DESC")
-            rows = cur.fetchall()
-        return [Account(**row) for row in rows]
-    finally:
-        _put_conn(conn)
+    with db.cursor(dict_rows=True) as cur:
+        cur.execute("SELECT * FROM accounts ORDER BY created_at DESC")
+        rows = cur.fetchall()
+    return [Account(**row) for row in rows]
 
 
 def delete_by_id(account_id: UUID) -> bool:
-    conn = _get_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM accounts WHERE account_id = %s", (str(account_id),))
-            deleted = cur.rowcount > 0
-        conn.commit()
-        return deleted
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
+    with db.cursor(commit=True) as cur:
+        cur.execute("DELETE FROM accounts WHERE account_id = %s", (str(account_id),))
+        return cur.rowcount > 0

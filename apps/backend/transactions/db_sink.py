@@ -1,44 +1,21 @@
-"""PostgreSQL sink for the transactions service (create-only)."""
+"""PostgreSQL sink for the transactions service (create-only).
+
+Schema initialisation plus create/read, built on the shared connection pool
+and helpers in :mod:`db`. This module owns only the transactions-specific
+DDL, column list and row mapping.
+"""
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-import psycopg2
-import psycopg2.errors
-import psycopg2.extras
-import psycopg2.pool
-
-from config import settings
+import db
 from transactions.models import Transaction, TransactionCreate
 
-logger = logging.getLogger("c360.transactions.db_sink")
-
-_pool: psycopg2.pool.SimpleConnectionPool | None = None
-
-
-def _ensure_pool() -> psycopg2.pool.SimpleConnectionPool:
-    global _pool
-    if _pool is None:
-        url = settings.DATABASE_URL
-        if url is None:
-            raise RuntimeError("DATABASE_URL is not configured")
-        if "sslmode=" not in url:
-            sep = "&" if "?" in url else "?"
-            url = f"{url}{sep}sslmode=prefer"
-        _pool = psycopg2.pool.SimpleConnectionPool(minconn=1, maxconn=5, dsn=url)
-    return _pool
-
-
-def _get_conn():
-    return _ensure_pool().getconn()
-
-
-def _put_conn(conn) -> None:
-    _ensure_pool().putconn(conn)
-
+# ---------------------------------------------------------------------------
+# Schema
+# ---------------------------------------------------------------------------
 
 _DDL_STATEMENTS = [
     """
@@ -70,6 +47,14 @@ _INSERT_COLS = (
     "description, merchant_name, merchant_category, channel, status, reference_id, "
     "transacted_at, posted_at, created_at"
 )
+_PLACEHOLDERS = ", ".join(["%s"] * 15)
+_SEED_SQL = (
+    f"INSERT INTO transactions ({_INSERT_COLS}) VALUES ({_PLACEHOLDERS}) "
+    f"ON CONFLICT (transaction_id) DO NOTHING"
+)  # noqa: S608 — static column list
+_INSERT_RETURNING_SQL = (
+    f"INSERT INTO transactions ({_INSERT_COLS}) VALUES ({_PLACEHOLDERS}) RETURNING *"
+)  # noqa: S608 — static column list
 
 
 def _insert_params(t: Transaction) -> tuple:
@@ -81,103 +66,36 @@ def _insert_params(t: Transaction) -> tuple:
     )
 
 
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
 def init_db() -> None:
-    conn = _get_conn()
-    try:
-        conn.autocommit = False
-        with conn.cursor() as cur:
-            for stmt in _DDL_STATEMENTS:
-                cur.execute(stmt)
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
+    db.init_schema(_DDL_STATEMENTS, cdc_table="transactions")
+
+
+def seed_from_csv(transactions: list[Transaction]) -> None:
+    db.seed_if_empty("transactions", transactions, _SEED_SQL, _insert_params, label="transactions")
 
 
 def create(data: TransactionCreate) -> Transaction:
     now = datetime.now(tz=timezone.utc)
-    transaction = Transaction(
-        transaction_id=uuid4(),
-        created_at=now,
-        **data.model_dump(),
-    )
-    insert_sql = f"""
-        INSERT INTO transactions ({_INSERT_COLS})
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING *
-    """  # noqa: S608 — static column list
-    conn = _get_conn()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(insert_sql, _insert_params(transaction))
-            row = cur.fetchone()
-        conn.commit()
-        return Transaction(**row)
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
+    transaction = Transaction(transaction_id=uuid4(), created_at=now, **data.model_dump())
+    with db.cursor(dict_rows=True, commit=True) as cur:
+        cur.execute(_INSERT_RETURNING_SQL, _insert_params(transaction))
+        row = cur.fetchone()
+    return Transaction(**row)
 
 
 def get_by_id(transaction_id: UUID) -> Transaction | None:
-    conn = _get_conn()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute(
-                "SELECT * FROM transactions WHERE transaction_id = %s",
-                (str(transaction_id),),
-            )
-            row = cur.fetchone()
-        return Transaction(**row) if row else None
-    finally:
-        _put_conn(conn)
+    with db.cursor(dict_rows=True) as cur:
+        cur.execute("SELECT * FROM transactions WHERE transaction_id = %s", (str(transaction_id),))
+        row = cur.fetchone()
+    return Transaction(**row) if row else None
 
 
 def list_all() -> list[Transaction]:
-    conn = _get_conn()
-    try:
-        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM transactions ORDER BY transacted_at DESC")
-            rows = cur.fetchall()
-        return [Transaction(**row) for row in rows]
-    finally:
-        _put_conn(conn)
-
-
-def seed_from_csv(transactions: list[Transaction]) -> None:
-    """Bulk-insert *transactions* only when the table is currently empty.
-
-    Resilient to integrity errors (e.g. FK violations when accounts were not
-    seeded from the same CSV): logs and skips rather than crashing startup.
-    """
-    if not transactions:
-        return
-
-    conn = _get_conn()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM transactions")
-            if cur.fetchone()[0] > 0:
-                return
-            insert_sql = f"""
-                INSERT INTO transactions ({_INSERT_COLS})
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (transaction_id) DO NOTHING
-            """  # noqa: S608 — static column list
-            for t in transactions:
-                cur.execute(insert_sql, _insert_params(t))
-        conn.commit()
-    except psycopg2.IntegrityError:
-        conn.rollback()
-        logger.warning(
-            "Skipping transactions seed: integrity error (are accounts seeded from the CSV?)",
-            exc_info=True,
-        )
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        _put_conn(conn)
+    with db.cursor(dict_rows=True) as cur:
+        cur.execute("SELECT * FROM transactions ORDER BY transacted_at DESC")
+        rows = cur.fetchall()
+    return [Transaction(**row) for row in rows]

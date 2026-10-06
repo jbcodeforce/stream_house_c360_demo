@@ -2,14 +2,16 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # start_pg.sh
 # Starts a local PostgreSQL 17 container using the Apple Container CLI,
-# then runs the C360 schema + seed scripts against it for local testing.
+# then (optionally) runs the backend's own schema + seed bootstrap against it.
 #
 # Usage:
-#   ./scripts/local-tests/start_pg.sh [--customers N] [--seed] [--stop] [--reset]
+#   ./scripts/local-tests/start_pg.sh [--seed] [--stop] [--reset]
 #
 # Options:
-#   --seed          Also run create_tables.py and seed_data.py after startup
-#   --customers N   Number of customers to seed (default: 50, implies --seed)
+#   --seed          Run the backend bootstrap (create schema + CDC publication
+#                   and seed from the committed CSVs) after startup
+#   --customers N   Deprecated: the backend seeds a fixed CSV dataset, so N is
+#                   ignored. Accepted only for backward compatibility; implies --seed
 #   --stop          Stop and remove the running container, then exit
 #   --reset         Stop + remove any existing container, start a fresh one
 #
@@ -28,7 +30,7 @@ PG_PASSWORD="${PG_PASSWORD:-localdevonly}"
 PG_PORT="${PG_PORT:-5432}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DB_SCRIPTS_DIR="$(cd "${SCRIPT_DIR}/../db" && pwd)"
+BACKEND_DIR="$(cd "${SCRIPT_DIR}/../../apps/backend" && pwd)"
 
 # ── Argument parsing ───────────────────────────────────────────────────────────
 DO_SEED=false
@@ -39,7 +41,9 @@ NUM_CUSTOMERS=50
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --seed)       DO_SEED=true; shift ;;
-    --customers)  DO_SEED=true; NUM_CUSTOMERS="${2:?'--customers requires a value'}"; shift 2 ;;
+    --customers)  DO_SEED=true; NUM_CUSTOMERS="${2:?'--customers requires a value'}"
+                  echo "WARN: --customers is deprecated and ignored; the backend seeds a fixed CSV dataset." >&2
+                  shift 2 ;;
     --stop)       DO_STOP=true; shift ;;
     --reset)      DO_RESET=true; shift ;;
     *)            echo "Unknown option: $1" >&2; exit 1 ;;
@@ -141,35 +145,18 @@ echo "  Stop / clean up:"
 echo "    ./scripts/local-tests/start_pg.sh --stop"
 echo ""
 
-# ── Optionally run schema + seed scripts ─────────────────────────────────────
+# ── Optionally run the backend bootstrap (schema + CDC publication + seed) ─────
 if [[ "${DO_SEED}" == true ]]; then
-  log "Running create_tables.py …"
+  log "Running backend bootstrap (schema + CDC publication + CSV seed) …"
   (
-    cd "${DB_SCRIPTS_DIR}"
-    uv run python create_tables.py \
-      --host localhost \
-      --port "${PG_PORT}" \
-      --dbname "${PG_DB}" \
-      --username "${PG_USER}" \
-      --password "${PG_PASSWORD}" \
-      --sslmode disable
-  )
-
-  log "Running seed_data.py (--customers ${NUM_CUSTOMERS}) …"
-  (
-    cd "${DB_SCRIPTS_DIR}"
-    uv run python seed_data.py \
-      --host localhost \
-      --port "${PG_PORT}" \
-      --dbname "${PG_DB}" \
-      --username "${PG_USER}" \
-      --password "${PG_PASSWORD}" \
-      --sslmode disable \
-      --customers "${NUM_CUSTOMERS}"
+    cd "${BACKEND_DIR}"
+    DATABASE_URL="postgresql://${PG_USER}:${PG_PASSWORD}@localhost:${PG_PORT}/${PG_DB}?sslmode=disable" \
+    SINK=postgres \
+      uv run python bootstrap.py
   )
 
   log "✅ Local test environment is fully seeded and ready."
 else
-  log "Tip: pass --seed (or --customers N) to also create tables and insert data."
-  log "  Example: ./scripts/local-tests/start_pg.sh --seed --customers 100"
+  log "Tip: pass --seed to also create tables and seed the committed CSV dataset."
+  log "  Example: ./scripts/local-tests/start_pg.sh --seed"
 fi

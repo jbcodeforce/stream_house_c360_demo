@@ -135,15 +135,19 @@ UNDER REWORK
 
 #### Populate some data into the source database
 
-We propose to use a tool to create the three tables and seed some data. The code is under [./scripts/db/](./scripts/db/)
+The backend creates the three tables, the `c360_cdc_publication`, and seeds the
+committed CSV dataset on startup when `SINK=postgres`. Simply point it at the RDS
+instance and start it — no separate schema/seed tooling is needed:
 
 ```bash
-cd scripts/db
-uv sync
-SECRET_ARN=....
-# Create tables and seed default data: 50 customers (~100 accounts, ~1 500 transactions)
-uv run python seed_data.py --secret-arn "$SECRET_ARN" --region us-west-2 --ssl-root-cert ~/.ssh/global-bundle.pem
+cd apps/backend
+# DATABASE_URL carries the RDS credentials (e.g. from Secrets Manager / Terraform output)
+DATABASE_URL="postgresql://<user>:<pw>@<host>:5432/<db>?sslmode=require" SINK=postgres \
+  uv run uvicorn main:app
 ```
+
+To bootstrap the database without running the API server, run the same orchestration
+directly: `uv run python bootstrap.py` with the same env vars. It is idempotent.
 
 
 ## Flink Project Management
