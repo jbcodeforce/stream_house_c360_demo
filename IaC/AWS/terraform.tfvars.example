@@ -7,14 +7,13 @@ project_name = "c360"
 
 # --- Option 1: Existing VPC & Subnets ---
 # Replace with your actual existing VPC ID:
-vpc_id = "vpc-0123456789abcdef0"
+vpc_id = "vpc-0..."
 
-# Optional: specify explicit subnets in the VPC (must cover at least 2 distinct Availability Zones)
-# Leave as null to auto-discover all subnets within the specified VPC
-subnet_ids = null
 
 # --- Accessibility & Allowed Ingress CIDRs ---
 publicly_accessible = true
+my_ip_addr= ""
+
 
 # Allow your local machine IP and Confluent Cloud Egress IPs (never use 0.0.0.0/0)
 # E.g.: ["YOUR_LOCAL_IP/32", "CONFLUENT_NAT_GW_IP_1/32", "CONFLUENT_NAT_GW_IP_2/32"]

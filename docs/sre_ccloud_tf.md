@@ -24,7 +24,7 @@ IaC/ccloud/ — core Confluent Cloud stack:
 - outputs.tf: replaced the connector outputs with flink_compute_pool_id.
 - terraform.tfvars/.example: removed the AWS/connector entries.
 
-### Pre-requisites
+## Pre-requisites
 
 * Get the [git cli](https://git-scm.com/install/)
 * Clone this repository
@@ -34,7 +34,7 @@ IaC/ccloud/ — core Confluent Cloud stack:
     ```
 * Get [Terraform cli](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
 
-### Get Confluent Cloud environment information
+## Get Confluent Cloud environment information
 * Log to the Confluent Console
 * Get your user identifier if you are an organization admin, or ask your Organization administrator for a service account that has organization admin role. User has an id starting with `u-`, while service account has: `sa-`. We recommend using a service account
     ![](./images/ccloud/sa-id.png)
@@ -55,7 +55,7 @@ IaC/ccloud/ — core Confluent Cloud stack:
     Do NOT commit terraform.tfvars to version control. IT is gitignored as of now in this repo.
 * Modify the settings for cloud provider, region, prefix and service account id 
 
-### Perform the deployment
+## Perform the deployment
 
 * Initialize terraform state under IaC/ccloud folder:
     ```sh

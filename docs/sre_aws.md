@@ -1,10 +1,10 @@
 # AWS Resources
 
-This section of the documentation is to create AWS resources for the end-to-end Streamhouse demonstration with source database, S3 buckets and Catalog.
+This section of the documentation is to create AWS resources for the end-to-end Streamhouse demonstration with source database, S3 buckets and Catalog. 
 
 Terraform is organized under the [`IaC/`](IaC/) directory as **three independent root modules** (separate local state), each file-per-concern. This split lets the core Confluent Cloud stack run locally with **no AWS credentials**; AWS and the managed connector are opt-in cost paths.
 
-- [`IaC/AWS/`](IaC/AWS/) — **AWS stack**: PostgreSQL RDS 17 (CDC-ready), VPC/subnet lookups, security group (allowlists Confluent egress IPs), KMS, and the Secrets Manager secret consumed by `IaC/connector/`. Files: `provider.tf`, `variables.tf`, `data.tf`, `aws.tf`, `outputs.tf`.
+- [`IaC/AWS/`](IaC/AWS/) — **AWS stack**: PostgreSQL RDS 17 (CDC-ready), VPC/subnet lookups, security group (allowlists Confluent egress IPs), KMS, and the Secrets Manager secret consumed by `IaC/connector/`. Run with [`scripts/tf_aws.sh`](../scripts/tf_aws.sh) (needs AWS creds + `CONFLUENT_CLOUD_API_KEY/SECRET` exported; the security group reads Confluent egress IPs). Files: `provider.tf`, `variables.tf`, `data.tf`, `aws.tf`, `outputs.tf`.
 
 - [`IaC/connector/`](IaC/connector/) — managed Debezium Postgres CDC connector on Confluent cloud: reads the core stack's outputs from `../ccloud/terraform.tfstate` via `terraform_remote_state`, and the RDS credentials from AWS Secrets Manager. Run with [`scripts/tf_connector.sh`](scripts/tf_connector.sh) (needs AWS creds). Optional — in local mode the backend app writes Debezium-shaped events directly to `cdc.public.*` topics instead.
 
@@ -30,88 +30,26 @@ The resources created are illustrated in following figure:
     aws sso login --profile your-profile-name
     export AWS_PROFILE="your-profile-name"
     ```
-    
-* Find you the public IP address of your machine: [https://checkip.amazonaws.com](https://checkip.amazonaws.com)
-* Modify terraform environment variables `terraform.tfvars` with:
-    ```sh
-    db_allowed_cidr_blocks
-    my_ip_addr
-    ```
 
+    if for any reason you do not have a profile, use: `aws configure`
+    
+* Find the VPC you want to use to deploy RDS instance. For that go to the AWS Console, VPC and then select one of the VPC_id
+    ![](./images/aws/aws_vpc.png)
+* Find you the public IP address of your machine: [https://checkip.amazonaws.com](https://checkip.amazonaws.com)
+* Under `IaC/aws/` copy to `terraform.tfvars.example` to  `terraform.tfvars` and fill in real values.
+    ```sh
+    cp terraform.tfvars.example terraform.tfvars
+    ```
+    Do NOT commit terraform.tfvars to version control. IT is gitignored as of now in this repo.
+* Modify terraform environment variables `terraform.tfvars` for cloud region, vpc_id and my_ip_addr
+* Be sure to have CONFLUENT_CLOUD_API_KEY and CONFLUENT_CLOUD_API_SECRET exported in the Terminal session
 
 
 #### AWS Resources: RDS Postgresql
 
-For coverage of this end to end demonstration we are defining terraform files to create AWS resources. It is not mandatory to do so, if the focus is on data processing using Flink. The goal of preparing external OLTP database is to simulate data processing end-to-end from transaction to change data capture, to kafka topic. 
-
-The database is created in a public subnet of an existing VPC but the security group use the user ip address to define a rule 
+The database is created in a public subnet of an existing VPC but the security group uses the user ip address to define a rule 
 
 ![](./docs/diagrams/aws-rds.drawio.png)
-
-The database has three main tables:
-
-* Accounts:
-    ```sql
-        CREATE TABLE IF NOT EXISTS accounts (
-        account_id      UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
-        customer_id     UUID            NOT NULL REFERENCES customers(customer_id),
-        account_number  VARCHAR(20)     NOT NULL UNIQUE,
-        account_type    VARCHAR(30)     NOT NULL,  -- 'CHECKING', 'SAVINGS', 'CREDIT', 'LOAN'
-        currency        CHAR(3)         NOT NULL DEFAULT 'USD',
-        balance         NUMERIC(18, 2)  NOT NULL DEFAULT 0.00,
-        credit_limit    NUMERIC(18, 2),            -- populated for CREDIT / LOAN accounts
-        opened_date     DATE            NOT NULL DEFAULT CURRENT_DATE,
-        closed_date     DATE,
-        status          VARCHAR(20)     NOT NULL DEFAULT 'ACTIVE',
-        created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-        updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
-    )
-    ```
-
-* Customers
-    ```sql
-        CREATE TABLE IF NOT EXISTS customers (
-        customer_id     UUID            PRIMARY KEY DEFAULT gen_random_uuid(),
-        first_name      VARCHAR(100)    NOT NULL,
-        last_name       VARCHAR(100)    NOT NULL,
-        email           VARCHAR(255)    NOT NULL UNIQUE,
-        phone           VARCHAR(30),
-        date_of_birth   TIMESTAMPTZ,
-        gender          VARCHAR(20),
-        address_line1   VARCHAR(255),
-        address_line2   VARCHAR(255),
-        city            VARCHAR(100),
-        state           VARCHAR(100),
-        postal_code     VARCHAR(20),
-        country         VARCHAR(60)     NOT NULL DEFAULT 'US',
-        customer_since  DATE            NOT NULL DEFAULT CURRENT_DATE,
-        segment         VARCHAR(50),    -- e.g. 'RETAIL', 'SMB', 'ENTERPRISE'
-        status          VARCHAR(20)     NOT NULL DEFAULT 'ACTIVE',
-        created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
-        updated_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW()
-    )
-    ```
-    
-* Transactions:
-    ```sql
-        CREATE TABLE IF NOT EXISTS transactions (
-        transaction_id   UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
-        account_id       UUID           NOT NULL REFERENCES accounts(account_id),
-        customer_id      UUID           NOT NULL REFERENCES customers(customer_id),
-        transaction_type VARCHAR(30)    NOT NULL,  -- 'DEBIT', 'CREDIT', 'TRANSFER', 'FEE', 'INTEREST'
-        amount           NUMERIC(18, 2) NOT NULL,
-        currency         CHAR(3)        NOT NULL DEFAULT 'USD',
-        description      VARCHAR(500),
-        merchant_name    VARCHAR(200),
-        merchant_category VARCHAR(100),
-        channel          VARCHAR(50),   -- 'ONLINE', 'ATM', 'POS', 'MOBILE', 'BRANCH'
-        status           VARCHAR(20)    NOT NULL DEFAULT 'COMPLETED',
-        reference_id     VARCHAR(100),  -- external reference / idempotency key
-        transacted_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
-        posted_at        TIMESTAMPTZ,
-        created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
-    )
-    ```
 
 #### AWS RDS Postgresql
 
@@ -119,10 +57,36 @@ The terraform under `IaC/AWS` folder creates the RDS Postgresql 17 instance, wit
 
 RDS storage is encrypted with KMS Customer Managed Key and DB secrets. Database credentials are securely saved in AWS Secrets Manager.
 
+Run this stack through the [`scripts/tf_aws.sh`](../scripts/tf_aws.sh) wrapper rather than calling `terraform` directly. The wrapper handles two credential gotchas that make a bare `terraform plan` fail:
+
+- **AWS**: SSO profiles often store temporary (`ASIA…`) keys *without* an
+  `aws_session_token` in the shared files. The AWS CLI still works from its SSO
+  cache, but Terraform's provider rejects the incomplete set (`No valid credential
+  sources found`). The wrapper refreshes the SSO token if needed and exports the full
+  key + secret + session-token triple into the environment. It also verifies the
+  resolved account matches the expected one (`829250931565` by default; override with
+  `EXPECTED_AWS_ACCOUNT_ID`) and fails fast if a similarly-named profile lands in the
+  wrong account — e.g. `829250931565_nonprod-administrator` actually resolves to
+  `898188061957`, so use `AWS_PROFILE=default` (or another profile in the right account).
+- **Confluent**: the security group ingress is built from the Confluent Cloud egress
+  IPs, so the Confluent provider needs `cloud_api_key` / `cloud_api_secret`. Export
+  `CONFLUENT_CLOUD_API_KEY` and `CONFLUENT_CLOUD_API_SECRET` before running the
+  wrapper; it defensively strips any incomplete native Schema Registry / Flink env
+  vars that would otherwise trip the provider's all-or-none validation.
+
 ```sh
-terraform plan
-terraform apply
-terraform output
+# Confluent Cloud API creds must be exported (the wrapper does not read ~/.confluent/.env)
+export CONFLUENT_CLOUD_API_KEY=...
+export CONFLUENT_CLOUD_API_SECRET=...
+
+# Uses the `default` AWS profile unless AWS_PROFILE is set
+scripts/tf_aws.sh plan
+scripts/tf_aws.sh apply
+scripts/tf_aws.sh output
+
+# Target a specific SSO profile in account 829250931565 (logged in automatically
+# if the token expired; the wrapper refuses a profile in the wrong account)
+AWS_PROFILE=default scripts/tf_aws.sh plan
 ```
 
 The output gives us the following:

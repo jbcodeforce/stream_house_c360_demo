@@ -17,7 +17,7 @@ Terraform is organized under the [`IaC/`](IaC/) directory as **three independent
 
 - [`IaC/ccloud/`](IaC/ccloud/) — **core Confluent Cloud stack (no AWS)**: environment, Kafka cluster, Flink compute pool, Schema Registry, service account + Kafka/SR API keys. Run with [`scripts/tf.sh`](scripts/tf.sh). Needs only `CONFLUENT_CLOUD_API_KEY/SECRET`.
 - [`IaC/connector/`](IaC/connector/) — **managed Debezium Postgres CDC connector + AWS dependency**: reads the core stack's outputs from `../ccloud/terraform.tfstate` via `terraform_remote_state`, and the RDS credentials from AWS Secrets Manager. Run with [`scripts/tf_connector.sh`](scripts/tf_connector.sh) (needs AWS creds). Optional — in local mode the backend app writes Debezium-shaped events directly to `cdc.public.*` topics instead.
-- [`IaC/AWS/`](IaC/AWS/) — **AWS stack**: PostgreSQL RDS 17 (CDC-ready), VPC/subnet lookups, security group (allowlists Confluent egress IPs), KMS, and the Secrets Manager secret consumed by `IaC/connector/`. Files: `provider.tf`, `variables.tf`, `data.tf`, `aws.tf`, `outputs.tf`.
+- [`IaC/AWS/`](IaC/AWS/) — **AWS stack**: PostgreSQL RDS 17 (CDC-ready), VPC/subnet lookups, security group (allowlists Confluent egress IPs), KMS, and the Secrets Manager secret consumed by `IaC/connector/`. Run with [`scripts/tf_aws.sh`](scripts/tf_aws.sh) (needs AWS creds + `CONFLUENT_CLOUD_API_KEY/SECRET` exported; the security group reads Confluent egress IPs). Files: `provider.tf`, `variables.tf`, `data.tf`, `aws.tf`, `outputs.tf`.
 
 **Apply order:** `IaC/ccloud` (always) → `IaC/AWS` + `IaC/connector` (only for the full CDC-over-AWS path).
 
