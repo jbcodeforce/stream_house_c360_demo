@@ -78,13 +78,13 @@ resource "random_password" "db_master_password" {
 
 # Store database credentials securely in AWS Secrets Manager
 resource "aws_secretsmanager_secret" "db_credentials" {
-  name                    = "${var.project_name}-${var.environment}-rds-credentials"
+  name                    = "${var.project_name}-${var.environment}-rds-creds"
   description             = "Master credentials and connection details for Postgres RDS"
   kms_key_id              = aws_kms_key.rds_key.arn
   recovery_window_in_days = 0
 
   tags = {
-    Name        = "${var.project_name}-${var.environment}-rds-credentials"
+    Name        = "${var.project_name}-${var.environment}-rds-creds"
     Environment = var.environment
   }
 }

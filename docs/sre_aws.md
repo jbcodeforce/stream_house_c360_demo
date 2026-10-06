@@ -4,7 +4,7 @@ This section of the documentation is to create AWS resources for the end-to-end 
 
 Terraform is organized under the [`IaC/`](IaC/) directory as **three independent root modules** (separate local state), each file-per-concern. This split lets the core Confluent Cloud stack run locally with **no AWS credentials**; AWS and the managed connector are opt-in cost paths.
 
-- [`IaC/AWS/`](IaC/AWS/) — **AWS stack**: PostgreSQL RDS 17 (CDC-ready), VPC/subnet lookups, security group (allowlists Confluent egress IPs), KMS, and the Secrets Manager secret consumed by `IaC/connector/`. Run with [`scripts/tf_aws.sh`](../scripts/tf_aws.sh) (needs AWS creds + `CONFLUENT_CLOUD_API_KEY/SECRET` exported; the security group reads Confluent egress IPs). Files: `provider.tf`, `variables.tf`, `data.tf`, `aws.tf`, `outputs.tf`.
+- [`IaC/AWS/`](IaC/AWS/) — **AWS stack**: PostgreSQL RDS 17 (CDC-ready), VPC/subnet lookups, security group (allowlists Confluent egress IPs), KMS, and the Secrets Manager secret consumed by `IaC/connector/`. Run with [`scripts/tf_aws.sh`](../scripts/tf_aws.sh) as it needs AWS credentials and `CONFLUENT_CLOUD_API_KEY/SECRET` exported as to setup of the security group reads Confluent egress IPs dynamically.
 
 - [`IaC/connector/`](IaC/connector/) — managed Debezium Postgres CDC connector on Confluent cloud: reads the core stack's outputs from `../ccloud/terraform.tfstate` via `terraform_remote_state`, and the RDS credentials from AWS Secrets Manager. Run with [`scripts/tf_connector.sh`](scripts/tf_connector.sh) (needs AWS creds). Optional — in local mode the backend app writes Debezium-shaped events directly to `cdc.public.*` topics instead.
 
@@ -15,6 +15,9 @@ The resources created are illustrated in following figure:
 
 ![](./diagrams/aws-rds.drawio.png)
 
+* RDS Postgresql instance
+* Security Group and metwork policies for the application load balancer
+* Secrets
 
 ### Pre-requisites
 
@@ -83,10 +86,6 @@ export CONFLUENT_CLOUD_API_SECRET=...
 scripts/tf_aws.sh plan
 scripts/tf_aws.sh apply
 scripts/tf_aws.sh output
-
-# Target a specific SSO profile in account 829250931565 (logged in automatically
-# if the token expired; the wrapper refuses a profile in the wrong account)
-AWS_PROFILE=default scripts/tf_aws.sh plan
 ```
 
 The output gives us the following:
@@ -103,26 +102,21 @@ vpc_cidr_block = "10......"
 vpc_id = "vpc-...."
 ```
 
-Once the database is up and running, the backend creates the tables, the
-`c360_cdc_publication`, and seeds the committed CSV dataset on startup — there is no
-separate schema/seed script. Build `DATABASE_URL` from the RDS secret and run the
-backend bootstrap (or just start the API with `SINK=postgres`):
+Once the database is up and running, the backend creates the tables, the `c360_cdc_publication`, and seeds the committed CSV dataset on startup — there is no separate schema/seed script. Build `DATABASE_URL` from the RDS secret and run the backend bootstrap (or just start the API with `SINK=postgres`):
 
 ```sh
 # Pull the RDS credentials emitted into Secrets Manager by Terraform
 export RDSHOST="c360-....rds.amazonaws.com"
-DB_PASSWORD=$(aws secretsmanager get-secret-value \
+export DB_PASSWORD=$(aws secretsmanager get-secret-value \
   --secret-id arn:aws:secretsmanager:us-west-2:...:secret:c360-... \
   --query SecretString --output text | jq -r .password)
 
 cd apps/backend
 DATABASE_URL="postgresql://dbadmin:${DB_PASSWORD}@${RDSHOST}:5432/c360db?sslmode=require" \
-SINK=postgres \
-  uv run python bootstrap.py
+SINK=postgres uv run python bootstrap.py
 ```
 
-The bootstrap is idempotent, so it is safe to re-run. The CDC publication now covers
-all three tables (`customers`, `accounts`, `transactions`).
+The bootstrap is idempotent, so it is safe to re-run. The CDC publication now covers all three tables (`customers`, `accounts`, `transactions`).
 
 #### Use psql to verify data in RDS
 
@@ -179,3 +173,24 @@ It is possible to retrieve the secret ARN from secrets manager:
 #### Enhancement
 
 * RDS should be in private subnet with VPC private link set to Confluent Cloud
+
+## Deploying the CDC Kafka connector
+
+* Execute the following commands in sequence:
+
+```
+./scripts/tf_connector.sh init
+
+./scripts/tf_connector.sh plan
+
+./scripts/tf_connector.sh apply
+```
+
+* Go to the console to verify Connector is created and running
+  ![](./images/ccloud/cdc_connector.png)
+
+* And verify topics are created
+  ![](./images/ccloud/cdc_topics.png)
+
+* And have some records
+  ![](./images/ccloud/cdc_cust_records.png)
