@@ -48,5 +48,5 @@ variable "cc_sa_env_mgr" {
 variable "flink_max_cfu" {
   type        = number
   description = "Maximum CFUs (Confluent Flink Units) for the Flink compute pool"
-  default     = 5
+  default     =  50
 }

@@ -1,8 +1,4 @@
 
-
-#!/usr/bin/env bash
-set -euo pipefail
-
 # Resolve the IaC/ccloud directory regardless of whether the script is run
 # from the repo root or from the scripts/ subdirectory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,5 +17,7 @@ export KAFKA_API_KEY=$(terraform output -raw kafka_api_key_id)
 export KAFKA_API_SECRET=$(terraform output -raw kafka_api_key_secret)
 export KAFKA_BOOTSTRAP_SERVERS=$(terraform output -raw kafka_bootstrap_endpoint)
 export FLINK_COMPUTE_POOL_ID=$(terraform output -raw flink_compute_pool_id)
+export SCHEMA_REGISTRY_KEY=$(terraform output -raw schema_registry_api_key_id)
+export SCHEMA_REGISTRY_SECRET=$(terraform output -raw schema_registry_api_key_secret)
 echo "----------------"
 printenv
