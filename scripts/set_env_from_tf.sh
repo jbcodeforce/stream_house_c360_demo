@@ -39,6 +39,9 @@ fi
 
 # Use 'terraform -chdir' instead of cd so sourcing does not move the caller's shell.
 export ENVIRONMENT_ID=$(terraform -chdir="${CCLOUD_DIR}" output -raw environment_id)
+export CC_REGION=$(terraform -chdir="${CCLOUD_DIR}" output -raw cc_region)
+export CC_PROVIDER=$(terraform -chdir="${CCLOUD_DIR}" output -raw cloud_provider)
+export KAFKA_CLUSTER_NAME=$(terraform -chdir="${CCLOUD_DIR}" output -raw kafka_name)
 export KAFKA_API_KEY=$(terraform -chdir="${CCLOUD_DIR}" output -raw kafka_api_key_id)
 export KAFKA_API_SECRET=$(terraform -chdir="${CCLOUD_DIR}" output -raw kafka_api_key_secret)
 export KAFKA_BOOTSTRAP_SERVERS=$(terraform -chdir="${CCLOUD_DIR}" output -raw kafka_bootstrap_endpoint)

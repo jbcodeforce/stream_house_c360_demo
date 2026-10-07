@@ -5,7 +5,7 @@
 {{ config(
     materialized = 'streaming_table',
     with= {
-        'changelog.mode': 'append',
+        'changelog.mode': 'upsert',
         'connector': 'confluent',
         'kafka.cleanup-policy': 'delete',
         'scan.bounded.mode': 'unbounded',
@@ -13,5 +13,15 @@
         'value.format': 'avro-registry'
     }
 ) }}
---- to modify!
-SELECT 1;
+
+
+select 
+    account_id,
+    customer_id, 
+    account_type, 
+    to_timestamp_ltz(`opened_date`) as opened_date ,
+
+from `cdc.public.accounts` 
+
+where status <> 'SUSPENDED'
+

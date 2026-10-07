@@ -43,4 +43,64 @@ sources:
     - name: updated_at
       data_type: string
   - name: cdc.public.accounts
+    identifier: cdc.public.accounts
+    description: Topic 'cdc.public.accounts' — registered via sl-dbt get-schema-existing-topic-to-dbt.
+    columns:
+    - name: account_id
+      data_type: string
+    - name: customer_id
+      data_type: string
+    - name: account_number
+      data_type: string
+    - name: account_type
+      data_type: string
+    - name: currency
+      data_type: string
+    - name: balance
+      data_type: double
+    - name: credit_limit
+      data_type: double
+    - name: opened_date
+      data_type: int
+    - name: closed_date
+      data_type: int
+    - name: status
+      data_type: string
+    - name: created_at
+      data_type: string
+    - name: updated_at
+      data_type: string
   - name: cdc.public.transactions
+    identifier: cdc.public.transactions
+    description: Topic 'cdc.public.transactions' — registered via sl-dbt get-schema-existing-topic-to-dbt.
+    columns:
+    - name: transaction_id
+      data_type: string
+    - name: account_id
+      data_type: string
+    - name: customer_id
+      data_type: string
+    - name: transaction_type
+      data_type: string
+    - name: amount
+      data_type: double
+    - name: currency
+      data_type: string
+    - name: description
+      data_type: string
+    - name: merchant_name
+      data_type: string
+    - name: merchant_category
+      data_type: string
+    - name: channel
+      data_type: string
+    - name: status
+      data_type: string
+    - name: reference_id
+      data_type: string
+    - name: transacted_at
+      data_type: string
+    - name: posted_at
+      data_type: string
+    - name: created_at
+      data_type: string

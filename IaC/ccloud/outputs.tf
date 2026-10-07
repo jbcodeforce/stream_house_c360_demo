@@ -12,6 +12,13 @@ output "env_display_name" {
 # ------------------------------------------------------
 # Kafka Cluster
 # ------------------------------------------------------
+output "cc_region" {
+  value = var.aws_region_primary
+}
+
+output "cloud_provider" {
+  value = var.cloud_provider
+}
 
 output "kafka_id" {
   value = confluent_kafka_cluster.kcl.id

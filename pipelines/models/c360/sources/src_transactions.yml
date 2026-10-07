@@ -1,6 +1,6 @@
 
 models:
-- name: src_dedup_transactions
+- name: src_transactions
   description: ""
   config:
     contract:
