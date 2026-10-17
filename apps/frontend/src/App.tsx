@@ -9,7 +9,6 @@ import AccountFormPage from './pages/AccountFormPage'
 import TransactionsPage from './pages/TransactionsPage'
 import TransactionDetailPage from './pages/TransactionDetailPage'
 import TransactionFormPage from './pages/TransactionFormPage'
-import ConfigPage from './pages/ConfigPage'
 
 export default function App() {
   return (
@@ -27,7 +26,6 @@ export default function App() {
         <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/transactions/new" element={<TransactionFormPage />} />
         <Route path="/transactions/:id" element={<TransactionDetailPage />} />
-        <Route path="/settings" element={<ConfigPage />} />
       </Route>
     </Routes>
   )

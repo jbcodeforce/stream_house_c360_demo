@@ -14,14 +14,15 @@
     }
 ) }}
 
-
 select 
     account_id,
     customer_id, 
     account_type, 
-    to_timestamp_ltz(`opened_date`) as opened_date ,
-
-from `cdc.public.accounts` 
+    balance,
+    point_balance,
+    to_timestamp_ltz(`opened_date`) as opened_date,
+    status    
+from {{ source('cdc', 'cdc.public.accounts')}}
 
 where status <> 'SUSPENDED'
 

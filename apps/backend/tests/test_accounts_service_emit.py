@@ -10,7 +10,6 @@ import pytest
 
 from accounts import service
 from accounts.models import Account, AccountCreate, AccountUpdate
-from config_store import AppConfig
 
 
 def _account() -> Account:
@@ -25,6 +24,10 @@ def _account() -> Account:
 
 @pytest.fixture
 def svc(monkeypatch):
+    # Local precondition: no CDC connector, so the app is the Kafka producer.
+    # Pinned explicitly so these emit assertions don't depend on the ambient
+    # DATABASE_URL (which now drives the CDC_CONNECTOR_ENABLED default).
+    monkeypatch.setattr(service.settings, "CDC_CONNECTOR_ENABLED", False)
     monkeypatch.setattr(service.db_sink, "create", MagicMock())
     monkeypatch.setattr(service.db_sink, "update", MagicMock())
     monkeypatch.setattr(service.db_sink, "get_by_id", MagicMock())
@@ -36,10 +39,7 @@ def svc(monkeypatch):
 
 
 def _enable(monkeypatch, enabled: bool):
-    monkeypatch.setattr(
-        service.config_store, "get_config",
-        lambda: AppConfig(kafka_produce_enabled=enabled),
-    )
+    monkeypatch.setattr(service.settings, "KAFKA_PRODUCE_ENABLED", enabled)
 
 
 def _create_payload():

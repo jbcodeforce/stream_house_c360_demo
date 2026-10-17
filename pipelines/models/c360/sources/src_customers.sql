@@ -14,52 +14,7 @@
     }
 ) }}
 
--- Migrated from 
-with deduplicated_customers as (
-    SELECT 
-        customer_id,
-        first_name,
-        last_name,
-        email,
-        phone,
-        date_of_birth,
-        gender,
-        registration_date,
-        customer_segment,
-        address_line1,
-        city,
-        state,
-        postal_code,
-        country,
-        event_ts
-    FROM (
-        SELECT 
-            customer_id,
-            first_name,
-            last_name,
-            email,
-            phone,
-            date_of_birth,
-            gender,
-            created_at as registration_date,
-            segment as customer_segment,
-            address_line1,
-            city,
-            state,
-            postal_code,
-            country,
-            `$rowtime` as event_ts, -- propagate src ts to downstream
-            ROW_NUMBER() OVER (
-                PARTITION BY customer_id 
-                ORDER BY `$rowtime` DESC
-            ) AS row_num
-        FROM {{ source('cc_flink', 'cdc.public.customers') }}
-        WHERE customer_id IS NOT NULL AND status = 'ACTIVE'
-    ) WHERE row_num = 1
-)
-
 SELECT 
-
     customer_id,
     first_name,
     last_name,
@@ -67,14 +22,13 @@ SELECT
     phone,
     date_of_birth,
     gender,
-    registration_date,
-    customer_segment,
-    address_line1,
+     created_at as registration_date,,
+    segment as customer_segment,
     city,
     state,
     postal_code,
     country,
-    event_ts,
+     `$rowtime` as event_ts,
     TIMESTAMPDIFF(YEAR, CAST(date_of_birth AS TIMESTAMP_LTZ(3)), event_ts) age_years,
     TIMESTAMPDIFF(DAY, CAST(registration_date AS TIMESTAMP_LTZ(3)), event_ts) as days_since_registration,
      CASE
@@ -90,4 +44,4 @@ SELECT
         WHEN phone IS NULL
         OR phone = '' THEN 1
         ELSE 0 END AS missing_phone_flag
-FROM deduplicated_customers
+FROM {{ source('cdc', 'cdc.public.customers') }}

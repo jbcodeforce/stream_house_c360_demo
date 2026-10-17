@@ -28,8 +28,6 @@ models:
     data_type: string
   - name: customer_segment
     data_type: string
-  - name: address_line1
-    data_type: string
   - name: city
     data_type: string
   - name: state

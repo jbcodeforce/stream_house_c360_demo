@@ -198,8 +198,8 @@ twice (once by the app, once by the connector).
 
 This is enforced by the `CDC_CONNECTOR_ENABLED` setting (see
 [`apps/backend/README.md`](../apps/backend/README.md#cdc-ownership-guard-cdc_connector_enabled)).
-When `true`, the backend never emits, regardless of the runtime
-`kafka_produce_enabled` toggle. It is wired up automatically on the RDS path:
+When `true`, the backend never emits, regardless of
+`KAFKA_PRODUCE_ENABLED`. It is wired up automatically on the RDS path:
 
 ```sh
 # Exports DATABASE_URL (RDS) and CDC_CONNECTOR_ENABLED=true for the shell:

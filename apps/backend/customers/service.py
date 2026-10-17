@@ -12,7 +12,6 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-import config_store
 from config import settings
 from customers import db_sink, inventory, kafka_producer
 from customers.models import Customer, CustomerCreate, CustomerUpdate
@@ -34,7 +33,7 @@ def _maybe_emit(op: str, customer: Customer) -> None:
     if settings.CDC_CONNECTOR_ENABLED:
         # A CDC connector (RDS / remote PG) owns Kafka; never dual-write.
         return
-    if not config_store.get_config().kafka_produce_enabled:
+    if not settings.KAFKA_PRODUCE_ENABLED:
         return
     try:
         if op == "C":

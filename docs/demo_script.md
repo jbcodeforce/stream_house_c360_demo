@@ -13,9 +13,9 @@ The architecture of the demonstration at the high-level looks like:
 
 ![](./diagrams/rds_execution.drawio.png)
 
-* Once the Confluent Cloud and AWS resources are created by Terraform, the user starts the local web application that connect to remote database server.
+Once the Confluent Cloud and AWS resources are created by Terraform, the user starts the local web application that connect to remote database server.
 
-* Set environment variables to access Confluent Cloud resources, like Kafka, schema KEY/secrets and bootstrap address:
+* Set environment variables to access Confluent Cloud resources, like Kafka, schema Key/secret and bootstrap address:
     ```sh
     source ./scripts/set_env_from_tf.sh
     ```
@@ -25,13 +25,15 @@ The architecture of the demonstration at the high-level looks like:
     ./scripts/run_dev.sh --db rds
     ```
 
-* [Follow with demonstration script](#demonstration-script)
+* [Follow with demonstration script](#demonstration-scenarios)
 
 ## Run with Local Database Get started locally
 
+This time the database runs locally and the web app writes to kafka in parallel to write to database.
+
 ![](./diagrams/local_execution.drawio.png)
 
-* Set environment variables to access Confluent Cloud resources, like Kafka, schema KEY/secrets and bootstrap address:
+* Set environment variables to access Confluent Cloud resources, like Kafka, schema Kwy/secrets and bootstrap address:
     ```sh
     source ./scripts/set_env_from_tf.sh
     ```
@@ -41,7 +43,26 @@ The architecture of the demonstration at the high-level looks like:
     ./scripts/run_dev.sh 
     ```
 
+As an alternate when reusing an existing Confluent Cloud environment, set, via script the following environment variables:
+```sh
+export ENVIRONMENT_ID=
+export CC_REGION=
+export CC_PROVIDER=
+export KAFKA_CLUSTER_NAME=
+export KAFKA_API_KEY=
+export KAFKA_API_SECRET=
+export KAFKA_BOOTSTRAP_SERVERS=
+export FLINK_COMPUTE_POOL_ID=
+export SCHEMA_REGISTRY_KEY=
+export SCHEMA_REGISTRY_SECRET=
+echo "----------------"
+export DB_PASSWORD=
+export DBNAME=
+export DATABASE_URL="postgresql://dbadmin:${DB_PASSWORD}@${RDSHOST}:${RDSPORT}/${DBNAME}"
 
+```
+
+## Demonstration Scenarios
 ### Customers Management
 
 The customers page presents a list of customers in the real database:

@@ -60,7 +60,7 @@ export DATABASE_URL="postgresql://dbadmin:${DB_PASSWORD}@${RDSHOST}:${RDSPORT}/$
 # This path targets RDS, where the managed Debezium CDC connector publishes to
 # the cdc.public.* topics. The backend must NOT also dual-write Kafka events
 # (that would double-publish), so hard-disable app emission regardless of the
-# runtime kafka_produce_enabled toggle.
+# KAFKA_PRODUCE_ENABLED setting.
 export CDC_CONNECTOR_ENABLED=true
 
 # Kept for debugging — note this prints DB_PASSWORD and DATABASE_URL in clear.

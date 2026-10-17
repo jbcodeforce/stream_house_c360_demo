@@ -55,13 +55,15 @@ Cross-cutting modules keep the slices DRY:
   / CDC-publication helpers. Each `db_sink` supplies only its own DDL and mapping; the connection and transaction mechanics are written once here.
 * `bootstrap.py` — on startup (`main.py` lifespan, `SINK=postgres`), creates all tables + the `c360_cdc_publication`, then seeds **customers → accounts →
   transactions** in FK order, each table only if empty (idempotent).
-* `config.py` — environment-derived `Settings` (`SINK`, `CDC_CONNECTOR_ENABLED`, `DATABASE_URL`, Kafka/SR credentials, topic names).
-* `config_store.py` — a runtime, user-editable JSON toggle (`kafka_produce_enabled`) exposed via `/api/v1/config`, distinct from the env-derived `config.py`.
+* `config.py` — environment-derived `Settings` (`SINK`, `CDC_CONNECTOR_ENABLED`, `KAFKA_PRODUCE_ENABLED`, `DATABASE_URL`, Kafka/SR credentials, topic names).
 
 **Who owns Kafka.** `service._maybe_emit()` only publishes when the backend is the designated producer: it is suppressed when `CDC_CONNECTOR_ENABLED=true`
 (a managed Debezium/CDC connector on RDS/remote PostgreSQL owns the `cdc.public.*` topics, so the app must not double-publish) and gated by the
-runtime `kafka_produce_enabled` flag. In local mode (no connector) the app is the only producer; against RDS the connector is. See `scripts/run_dev.sh` for
-how that flag is resolved per target.
+`KAFKA_PRODUCE_ENABLED` flag. `CDC_CONNECTOR_ENABLED` is **auto-resolved from the `DATABASE_URL` host** when not set explicitly (`config.py`):
+local PostgreSQL (`localhost`/`127.0.0.1`) ⇒ `false`, so the app produces; any remote host, RDS included, ⇒ `true`, so the connector owns Kafka and the
+app stays silent. This holds however the backend is launched — `uvicorn` directly or `scripts/run_dev.sh` — so RDS never double-publishes; set the env var
+explicitly to override. The emitted value is a Debezium-style Avro envelope (`before`/`after`/`source`/`op`), Confluent-framed and registered in Schema
+Registry, identical in shape to what the real connector produces (`source.connector = "c360-backend-bypass"` marks the app-produced ones).
 
 A new domain is added by copying the five-module slice, registering its router in `main.py`, and adding its `init_db` + `seed_from_csv` to `bootstrap.py`.
 
@@ -174,7 +176,7 @@ Configured in `pyproject.toml` (`testpaths = ["tests"]`, `pythonpath = ["."]`). 
     the producer mocked at the boundary.
   * `test_*_service_emit.py` / `test_service_emit.py` — the dispatch rules in `service.py`: that create/update/delete emit the right op, and that emission
     is correctly **suppressed** when `CDC_CONNECTOR_ENABLED` or the runtime toggle says so, and that a producer failure never fails the request.
-  * `test_*_api.py`, `test_config_api.py`, `test_config_store.py`, `test_cors.py` — router behavior via FastAPI `TestClient` (status codes, `404`/`409` mapping, CORS headers), with the DAO/producer stubbed.
+  * `test_*_api.py`, `test_cors.py` — router behavior via FastAPI `TestClient` (status codes, `404`/`409` mapping, CORS headers), with the DAO/producer stubbed.
   * `test_customers_kafka.py` — the full `SINK=kafka` path with Kafka/SR mocked.
 * **Postgres integration** — `test_*_postgres.py`. These require a live database and are **auto-skipped when `DATABASE_URL` is unset** (via the   `skip_without_postgres` fixture / `requires_postgres` marker).
 

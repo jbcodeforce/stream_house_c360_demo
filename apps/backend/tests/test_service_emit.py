@@ -14,7 +14,6 @@ import pytest
 
 from customers import service
 from customers.models import Customer, CustomerCreate, CustomerUpdate
-from config_store import AppConfig
 
 
 def _customer() -> Customer:
@@ -30,6 +29,10 @@ def _customer() -> Customer:
 def pg(monkeypatch):
     """Force the postgres path and stub the DB + producer on service."""
     monkeypatch.setattr(service.settings, "SINK", "postgres")
+    # Local precondition: no CDC connector, so the app is the Kafka producer.
+    # Pinned explicitly so these emit assertions don't depend on the ambient
+    # DATABASE_URL (which now drives the CDC_CONNECTOR_ENABLED default).
+    monkeypatch.setattr(service.settings, "CDC_CONNECTOR_ENABLED", False)
     monkeypatch.setattr(service.db_sink, "create", MagicMock())
     monkeypatch.setattr(service.db_sink, "update", MagicMock())
     monkeypatch.setattr(service.db_sink, "get_by_id", MagicMock())
@@ -41,10 +44,7 @@ def pg(monkeypatch):
 
 
 def _enable(monkeypatch, enabled: bool):
-    monkeypatch.setattr(
-        service.config_store, "get_config",
-        lambda: AppConfig(kafka_produce_enabled=enabled),
-    )
+    monkeypatch.setattr(service.settings, "KAFKA_PRODUCE_ENABLED", enabled)
 
 
 def test_create_emits_when_enabled(pg, monkeypatch):

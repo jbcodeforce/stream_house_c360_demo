@@ -45,9 +45,11 @@
 #   LOCAL_PG_*       LOCAL_PG_USER / LOCAL_PG_PASSWORD / LOCAL_PG_HOST /
 #                    LOCAL_PG_PORT / LOCAL_PG_DB override the local DSN parts.
 #
-# Exported env vars take precedence over apps/backend/.env (pydantic-settings
+# Exported env vars take precedence over the backend dotenv file (pydantic-settings
 # reads real environment variables before the dotenv file), so this script's
-# DATABASE_URL / SINK always win — whatever .env happens to contain.
+# DATABASE_URL / SINK always win — whatever the file happens to contain. The
+# dotenv path defaults to apps/backend/.env and can be changed by exporting
+# ENV_CONFIG_FILE.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 

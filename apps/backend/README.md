@@ -1,6 +1,6 @@
 # A Fast API Backend to simulate different microservices
 
-The goal is to offer REST APIs on customers, accounts, transactions resources. The backend, FAST API based implements the following architecture.
+The goal of this component is to offer REST APIs on customers, accounts, transactions resources. The backend, based on FastAPI, implements the following architecture.
 
 ![](../../docs/diagrams/backend.drawio.png)
 
@@ -9,7 +9,7 @@ Each component is isolated in term of code base so it can be packaged, if needed
 The structure is the same for all compoents:
 
 * REST API resource 
-* Snativeupports two write sinks controlled by a single `SINK` environment variable:
+* Support two write sinks controlled by a single `SINK` environment variable:
 
 | `SINK` value | Write path | Read path |
 |---|---|---|
@@ -17,7 +17,7 @@ The structure is the same for all compoents:
 | `kafka` | Produce Avro message to Confluent topic | Read from in-memory CSV |
 
 * CVS bootstrap for controlled data. When `SINK=postgres`, the backend auto-creates the schema on startup.  When `SINK=kafka`, the CSV remains the in-memory read store for all GET requests.
-* Centralise all environment-driven settings in one place so every module imports from `config` rather than calling `os.environ` directly.
+* Centralise all environment-driven settings in one place so every module imports from `config` rather than calling `os.environ` directly. The dotenv file path is read from the `ENV_CONFIG_FILE` environment variable (default `.env`); real environment variables always take precedence over its contents.
 * When `SINK=kafka`, write operations produce Avro-serialised messages to the Confluent topic using the Confluent Schema Registry. This bypasses CDC and lets the demo run without an RDS instance.
 
 * Define the canonical Pydantic schema for a Customer, matching the PostgreSQL table exactly (field names, types, optionality). This model is shared by all three layers: API request/response, database writes, and Kafka Avro payload.
@@ -25,19 +25,17 @@ The structure is the same for all compoents:
 * Leverage a thin orchestration layer that dispatches CRU operations to the correct sink and always uses `inventory.py` for reads when `SINK=kafka`.
 * Expose the Customers CRU endpoints as a FastAPI `APIRouter`. The router delegates all logic to `service.py` and handles HTTP status codes.
 * Local postgres server for integration tests and demonstration
-* The `main.py` wires the FastAPI app, include routers, and run startup lifecycle hooks (schema creation + CSV seeding for `SINK=postgres`; CSV cache load for `SINK=kafka`).
+* The `main.py` wires the FastAPI app, includes routers, and runs startup lifecycle hooks (schema creation + CSV seeding for `SINK=postgres`; CSV caches load for `SINK=kafka`).
     ```sh
     uv run uvicorn main:app --reload
     ```
 
-* TheFastAPI backend under `apps/backend/`
+* TheFastAPI backend is under `apps/backend/`
 * This is a `uv` managed project
 
 ## Customers CRUD operations
 
-Exposes a **Customers CRU REST API** and 
-
-The seed file (`customers/data/customers.csv`) ships with 10 pre-populated customers. 
+Exposes a **Customers CRU REST API**. The seed file (`customers/data/customers.csv`) ships with 10 pre-populated customers. 
 
 **Expected Outcomes:**
 - `POST /customers` → 201 Created, returns `Customer`
@@ -56,40 +54,29 @@ Exposes an **Accounts CRUD REST API** mirroring customers, stored in Postgres.
 - `PUT /accounts/{account_id}` → 200 or 404
 - `DELETE /accounts/{account_id}` → 204 or 404
 
-When the runtime "produce Kafka events" flag is on, create/update/delete also
-emit a best-effort Debezium envelope to `KAFKA_TOPIC_ACCOUNTS`
-(default `cdc.public.accounts`); failures are logged, never failing the DB op.
+When `KAFKA_PRODUCE_ENABLED` is on, create/update/delete also emit a best-effort Debezium envelope to `KAFKA_TOPIC_ACCOUNTS` (default `cdc.public.accounts`); failures are logged, never failing the DB op.
 
-## Runtime config
+## Kafka dual-write (`KAFKA_PRODUCE_ENABLED`)
 
-A runtime, user-editable flag controls whether customer writes also emit a
-Kafka event (dual-write) when Postgres is the sink. It is persisted to a JSON
-file (`RUNTIME_CONFIG_FILE`, default `runtime_config.json`) and defaults to
-`false`.
+The env setting `KAFKA_PRODUCE_ENABLED` (default `false`) controls whether writes also emit a Kafka event (dual-write) when Postgres is the sink. Changing it requires a restart.
 
-- `GET /config` → 200, returns `{ "kafka_produce_enabled": bool }`
-- `PUT /config` body `{ "kafka_produce_enabled": bool }` → 200, persisted
-
-When enabled, `create`/`update`/`delete` on the Postgres path emit a
-best-effort Kafka event (`c`/`u`/`d`); a produce failure is logged and never
-fails the DB operation. The `SINK=kafka` path is unaffected.
+When enabled, `create`/`update`/`delete` on the Postgres path emit a best-effort Kafka event (`c`/`u`/`d`); a produce failure is logged and never fails the DB operation. The `SINK=kafka` path is unaffected.
 
 ### CDC ownership guard (`CDC_CONNECTOR_ENABLED`)
 
-The runtime toggle above is the right control for **local mode** (local Docker
+`KAFKA_PRODUCE_ENABLED` is the right control for **local mode** (local Docker
 Postgres, no connector): the app is the only producer, so turn it on to emit
 Debezium-shaped events to `cdc.public.*`.
 
 For **RDS / remote PostgreSQL**, a managed Debezium CDC connector reads the WAL
 and publishes `cdc.public.*` itself. The app must therefore **never** also emit,
 or every change is published twice. The env setting `CDC_CONNECTOR_ENABLED`
-(default `false`) is a hard guard: when `true`, `_maybe_emit` returns before the
-runtime toggle is even consulted, so emission is off regardless of
-`kafka_produce_enabled`.
+(default `false`) is a hard guard: when `true`, `_maybe_emit` returns before
+`KAFKA_PRODUCE_ENABLED` is even consulted, so emission is off regardless of it.
 
 | Deployment                         | `CDC_CONNECTOR_ENABLED` | App emits Kafka?                     |
 | ---------------------------------- | ----------------------- | ----------------------------------- |
-| Local Postgres, no connector       | `false` (default)       | Only if runtime toggle is on        |
+| Local Postgres, no connector       | `false` (default)       | Only if `KAFKA_PRODUCE_ENABLED=true` |
 | RDS / remote PG + CDC connector    | `true`                  | Never (connector owns `cdc.public.*`) |
 
 Set it per deployment: `scripts/set_env_from_tf.sh` exports `true` for the RDS

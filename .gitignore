@@ -11,7 +11,6 @@
 # Superpowers SDD scratch workspace
 .superpowers/
 
-# Runtime app config (user-editable, not source)
-**/runtime_config.json
 **/__pycache__/
 __pycache__/
+**/.env.j9r

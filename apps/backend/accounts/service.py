@@ -10,7 +10,6 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
-import config_store
 from config import settings
 from accounts import db_sink, kafka_producer
 from accounts.models import Account, AccountCreate, AccountUpdate
@@ -24,7 +23,7 @@ def _maybe_emit(op: str, account: Account) -> None:
     if settings.CDC_CONNECTOR_ENABLED:
         # A CDC connector (RDS / remote PG) owns Kafka; never dual-write.
         return
-    if not config_store.get_config().kafka_produce_enabled:
+    if not settings.KAFKA_PRODUCE_ENABLED:
         return
     try:
         if op == "C":

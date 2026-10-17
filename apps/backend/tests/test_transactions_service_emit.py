@@ -8,7 +8,6 @@ from uuid import uuid4
 
 import pytest
 
-from config_store import AppConfig
 from transactions import service
 from transactions.models import Transaction, TransactionCreate
 
@@ -30,16 +29,17 @@ def _payload():
 
 @pytest.fixture
 def svc(monkeypatch):
+    # Local precondition: no CDC connector, so the app is the Kafka producer.
+    # Pinned explicitly so these emit assertions don't depend on the ambient
+    # DATABASE_URL (which now drives the CDC_CONNECTOR_ENABLED default).
+    monkeypatch.setattr(service.settings, "CDC_CONNECTOR_ENABLED", False)
     monkeypatch.setattr(service.db_sink, "create", MagicMock())
     monkeypatch.setattr(service.kafka_producer, "produce_create", MagicMock())
     return service
 
 
 def _enable(monkeypatch, enabled):
-    monkeypatch.setattr(
-        service.config_store, "get_config",
-        lambda: AppConfig(kafka_produce_enabled=enabled),
-    )
+    monkeypatch.setattr(service.settings, "KAFKA_PRODUCE_ENABLED", enabled)
 
 
 def test_create_emits_when_enabled(svc, monkeypatch):

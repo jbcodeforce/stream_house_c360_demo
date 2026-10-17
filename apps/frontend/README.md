@@ -27,9 +27,8 @@ npm run build
 
 ## Structure
 
-- `src/api/` — typed fetch client, customers CRUD module, and config module
+- `src/api/` — typed fetch client and customers CRUD module
 - `src/components/` — AppLayout, Header, Sidebar, ConfirmDialog
 - `src/pages/` — Customers and Accounts (table, detail, create/edit form),
-  the Transactions placeholder, and the Settings page (toggle Kafka event
-  production on create/update/delete)
-- `src/types/` — Customer, Account, and AppConfig types mirroring the backend
+  and the Transactions placeholder
+- `src/types/` — Customer and Account types mirroring the backend

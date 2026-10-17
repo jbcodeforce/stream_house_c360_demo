@@ -12,4 +12,17 @@ models:
       - type: not_null
       - type: primary_key
         expression: "not enforced"
-
+  - name: customer_id
+    data_type: string
+  - name: account_type
+    data_type: string
+  - name: currency
+    data_type: string
+  - name: balance
+    data_type: double
+  - name: point_balance
+    data_type: double
+  - name: opened_date
+    data_type: int
+  - name: status
+    data_type: string

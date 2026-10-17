@@ -1,20 +1,21 @@
 # Flink Project Management
-This section addresses the Flink pipeline definition and management using Confluent dbt.
+This section addresses the Flink pipeline definition and management using [Confluent dbt](https://pypi.org/project/dbt-confluent/) plugin.
 
 ## What is built
 
-We want to implement the following pipeline to process the raw/bronze layer of records coming out of the CDC Debezium source kafka connector:
+We want to implement the following pipeline to process the raw/bronze layer of records coming out of the CDC Debezium source kafka connector (cdc.*):
 
 ![](./diagrams/stream-flink.drawio.png)
 
-To a silver layer which includes clean source data, with no duplicate, canonical model and filtered records. The golden layer includes star schema dimensions and facts. For this demonstration the c360-profile define analytics about a customer based on the buying transactions done so far.
+To a silver layer which includes clean source data, with no duplicate, reflecting a canonical model and filtered records. The golden layer includes star schema dimensions and facts. For this demonstration the c360-profile defines analytics about a customer based on the buying transactions done so far.
 
-The Confluent Cloud Flink statements organization reflects the medaillon and star schema struture.  The Flink statements run in a compute pool, already created via the terraform deployment.
+The Confluent Cloud Flink statement organization reflects the medaillon and star schema structure.  The Flink statements run in a compute pool, already created via the terraform deployment (or reused but referenced in FLINK_COMPUTE_POOL_ID).
 
-1. First create the pipeline folder to manage the different Flink SQL statements, using the star schema pattern. This can be done manually or using tool from [flink-tools-for-agents](https://github.com/jbcodeforce/flink-tools-for-agents/tree/main/tools/dbt) project, which complement dbt confluent:
+1. First, create the pipeline folder to manage the different Flink SQL statements, using the star schema pattern. This can be done manually or using a tool from [flink-tools-for-agents](https://github.com/jbcodeforce/flink-tools-for-agents/tree/main/tools/dbt) project, which complement the dbt Confluent CLI:
     ```sh
     git clone https://github.com/jbcodeforce/flink-tools-for-agents.git
     cd flink-tools-for-agents
+    # run shift left for dbt project
     uv run sl-dbt init ~/Code/stream_house_c360_demo
     ```
 
@@ -29,12 +30,12 @@ The Confluent Cloud Flink statements organization reflects the medaillon and sta
     └── tools
     ```
 
-1. Add a data  analytic product named c360, to keep metrics for customer 360 view.
+1. Add a data  analytic product named `c360`, to keep metrics for customer 360 view.
     ```sh
     uv run sl-dbt add-data-product ~/Code/stream_house_c360_demo c360
     ```
 
-    Here is the expected structure
+    Here is the expected structure:
     ```sh
     pipelines
         ├── dbt_project.yml
@@ -49,7 +50,7 @@ The Confluent Cloud Flink statements organization reflects the medaillon and sta
         └── tests
     ```
 
-1. Add one table as output of deduplicating customers raw data
+1. Add one table as output of deduplicating customers raw data, and to filter unnecessary records:
 
     ```sh
      uv run sl-dbt add-table ~/Code/stream_house_c360_demo src_customers c360 --table-type  src
@@ -85,17 +86,19 @@ The Confluent Cloud Flink statements organization reflects the medaillon and sta
         ```sh
         value.format' = 'avro-debezium-registry'
         ```
+        which means the Kafka Source connector inside Confluent Cloud Flink uses a specific [deserializer that processes the envelop model](https://docs.confluent.io/cloud/current/flink/reference/serialization.html#debezium-format).
 
         We can do the same for: `show create table cdc.public.accounts;` and `show create table cdc.public.transactions;`
 
-        We can also discover that by default the changelog mode is set to `retract`. The because the CDC debezium configuration may have not defined the primary key mapping. So we could not run snapshot queries but only streaming query.
+        We can also discover that by default the changelog mode is set to `retract`. This is due to CDC debezium configuration that may not have  defined the primary key mapping. If the Kafka topic has `cleanup.policy` set to compact, the `changelog.mode` is set to upsert instead. 
+        With `retract` we could not run snapshot queries but only streaming query. 
 
     1. Look at some data and select only active customers:
         ```sql
         SELECT * FROM `j9r-env`.`j9r-kafka`.`cdc.public.customers` where status = 'ACTIVE';
         ```
 
-    1. Because the changelog mode is retract or upsert, within the topic there will be no duplicate for the current customers, accounts and transactions, the following query helps to validate that
+    1. Because the changelog mode is retract or upsert, within the topic there will be no duplicate for the current customers, accounts and transactions, the following query helps to validate that:
         ```sql
          with deduped_customer as (
             SELECT 
@@ -111,6 +114,8 @@ The Confluent Cloud Flink statements organization reflects the medaillon and sta
         ```
 
         ![](./images/flink/no_duplicate.png)
+
+1. We can continue the data analysis and finally build the following Flink SQL to do some filtering and data cleaning. See [flink src processing folder](../flink_sqls/).
 
 1. To be able connect to Confluent Cloud, we need to set the environment variables for API keys and secrets
     ```sh
@@ -178,26 +183,26 @@ The Confluent Cloud Flink statements organization reflects the medaillon and sta
       ```
 1. Be sure to modify your `.dbt/profiles.yml` with the following element.
     ```yaml
-    j9r:
+    cc_flink:
         outputs:
             dev:
-            cloud_provider: '{{ env_var(''CC_PROVIDER'') }}'
-            cloud_region: '{{ env_var('CC_REGION'') }}'
-            compute_pool_id: '{{ env_var('FLINK_COMPUTE_POOL_ID'') }}'
-            dbname: '{{ env_var('KAFKA_CLUSTER_NAME'') }}'
-            environment_id: '{{ env_var('ENVIRONMENT_ID'') }}'
-            execution_mode: streaming_query
-            flink_api_key: '{{ env_var(''FLINK_API_KEY'') }}'
-            flink_api_secret: '{{ env_var(''FLINK_API_SECRET'') }}'
-            organization_id: 49c.....
-            statement_label: dbt-confluent
-            statement_name_prefix: dbt-
-            threads: 4
-            type: confluent
+                cloud_provider: '{{ env_var(''CC_PROVIDER'') }}'
+                cloud_region: '{{ env_var('CC_REGION'') }}'
+                compute_pool_id: '{{ env_var('FLINK_COMPUTE_POOL_ID'') }}'
+                dbname: '{{ env_var('KAFKA_CLUSTER_NAME'') }}'
+                environment_id: '{{ env_var('ENVIRONMENT_ID'') }}'
+                execution_mode: streaming_query
+                flink_api_key: '{{ env_var(''FLINK_API_KEY'') }}'
+                flink_api_secret: '{{ env_var(''FLINK_API_SECRET'') }}'
+                organization_id: '{{ env_var(''CC_ORG_ID'') }}'
+                statement_label: dbt-confluent
+                statement_name_prefix: dbt-
+                threads: 4
+                type: confluent
         target: dev
     ```
 
-    This is a generic profile for Confluent Cloud  that uses environment variables for the default important values. Only the organization_id is set with a string (as of now)
+    This is a generic profile for Confluent Cloud  that uses environment variables to avoid sharing secrets in yaml file.
 
 1. Continue to create the following flink statements to filter and transform raw CDC topics, create dimension and fact for the analytics.
 
@@ -218,3 +223,19 @@ The Confluent Cloud Flink statements organization reflects the medaillon and sta
     uv run generate-manifest --sql-dir ../stream_house_c360_demo/pipelines/models 
     ```
 
+### IaC
+
+* Remove connector
+    ```sh
+    ./scripts/tf_connector.sh destroy
+    ```
+
+* Remove Confluent Cloud resources
+    ```sh
+    ./scripts/tf.sh destroy
+    ```
+
+* Remove AWS resources
+    ```sh
+    ./scripts/tf_aws.sh destroy
+    ```
