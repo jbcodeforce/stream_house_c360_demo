@@ -12,6 +12,8 @@ from api.customer_resource import router as customers_router
 from api.transaction_resource import router as transaction_router
 from config import settings
 from customers import inventory as customers_inventory
+from accounts  import inventory as account_inventory
+from transactions import inventory as transaction_inventory
 
 logger = logging.getLogger("c360.main")
 
@@ -22,7 +24,16 @@ async def lifespan(app: FastAPI):
         bootstrap.init_and_seed()
     elif settings.SINK == "kafka":
         customers = customers_inventory.load()
+        account_inventory.load()
+        transaction_inventory.load()
         logger.info("Kafka sink ready — %d customers loaded from CSV", len(customers))
+    if settings.KAFKA_SEED_ON_START:
+        if settings.CDC_CONNECTOR_ENABLED:
+            logger.warning(
+                "KAFKA_SEED_ON_START ignored — a CDC connector owns the Kafka topics"
+            )
+        else:
+            bootstrap.seed_kafka()
     yield
 
 

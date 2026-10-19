@@ -8,10 +8,10 @@ never fails (or hangs) the DB operation.
 from __future__ import annotations
 
 import logging
-from uuid import UUID
-
+from uuid import UUID, uuid4
+from datetime import datetime, timezone
 from config import settings
-from transactions import db_sink, kafka_producer
+from transactions import db_sink, kafka_producer, inventory
 from transactions.models import Transaction, TransactionCreate
 
 logger = logging.getLogger("c360.transactions.service")
@@ -34,8 +34,19 @@ def _maybe_emit(txn: Transaction) -> None:
 
 
 def create(data: TransactionCreate) -> Transaction:
-    txn = db_sink.create(data)
-    _maybe_emit(txn)
+    if settings.SINK == "postgres":
+        txn = db_sink.create(data)
+        _maybe_emit(txn)
+        return txn
+    now = datetime.now(tz=timezone.utc)
+    txn = Transaction(
+        customer_id=uuid4(),
+        created_at=now,
+        updated_at=now,
+        **data.model_dump(),
+    )
+    inventory.create(txn)
+    kafka_producer.produce_create(txn)
     return txn
 
 

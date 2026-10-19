@@ -24,6 +24,8 @@ def _account() -> Account:
 
 @pytest.fixture
 def svc(monkeypatch):
+    """Force the postgres path and stub the DB + producer on service."""
+    monkeypatch.setattr(service.settings, "SINK", "postgres")
     # Local precondition: no CDC connector, so the app is the Kafka producer.
     # Pinned explicitly so these emit assertions don't depend on the ambient
     # DATABASE_URL (which now drives the CDC_CONNECTOR_ENABLED default).

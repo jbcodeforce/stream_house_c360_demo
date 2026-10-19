@@ -10,6 +10,7 @@ they are written once.
 from __future__ import annotations
 
 import logging
+import threading
 from contextlib import contextmanager
 from typing import Callable, Sequence
 
@@ -25,19 +26,22 @@ logger = logging.getLogger("c360.db")
 # connector. Each table adds itself to it during schema init.
 CDC_PUBLICATION = "c360_cdc_publication"
 
-_pool: psycopg2.pool.SimpleConnectionPool | None = None
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+_pool_lock = threading.Lock()
 
 
-def _ensure_pool() -> psycopg2.pool.SimpleConnectionPool:
+def _ensure_pool() -> psycopg2.pool.ThreadedConnectionPool:
     global _pool
     if _pool is None:
-        url = settings.DATABASE_URL
-        if url is None:
-            raise RuntimeError("DATABASE_URL is not configured")
-        if "sslmode=" not in url:
-            sep = "&" if "?" in url else "?"
-            url = f"{url}{sep}sslmode=prefer"
-        _pool = psycopg2.pool.SimpleConnectionPool(minconn=1, maxconn=5, dsn=url)
+        with _pool_lock:
+            if _pool is None:
+                url = settings.DATABASE_URL
+                if url is None:
+                    raise RuntimeError("DATABASE_URL is not configured")
+                if "sslmode=" not in url:
+                    sep = "&" if "?" in url else "?"
+                    url = f"{url}{sep}sslmode=prefer"
+                _pool = psycopg2.pool.ThreadedConnectionPool(minconn=1, maxconn=10, dsn=url)
     return _pool
 
 

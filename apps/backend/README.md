@@ -56,6 +56,11 @@ Exposes an **Accounts CRUD REST API** mirroring customers, stored in Postgres.
 
 When `KAFKA_PRODUCE_ENABLED` is on, create/update/delete also emit a best-effort Debezium envelope to `KAFKA_TOPIC_ACCOUNTS` (default `cdc.public.accounts`); failures are logged, never failing the DB op.
 
+## Seeding Kafka at startup (`KAFKA_SEED_ON_START`)
+
+When `KAFKA_SEED_ON_START=true` (default `false`), the lifespan loads the seed CSVs and publishes every record as a Debezium `create` event to `KAFKA_TOPIC_CUSTOMERS`, `KAFKA_TOPIC_ACCOUNTS` and `KAFKA_TOPIC_TRANSACTIONS` (in that order). It is best-effort (failures are logged, startup continues) and is ignored when `CDC_CONNECTOR_ENABLED` is true, since the connector then owns those topics. It runs on every start, so enable it only when you want the records re-published; ids are deterministic, so re-runs upsert the same keys.
+
+
 ## Kafka dual-write (`KAFKA_PRODUCE_ENABLED`)
 
 The env setting `KAFKA_PRODUCE_ENABLED` (default `false`) controls whether writes also emit a Kafka event (dual-write) when Postgres is the sink. Changing it requires a restart.

@@ -33,14 +33,15 @@ This time the database runs locally and the web app writes to kafka in parallel 
 
 ![](./diagrams/local_execution.drawio.png)
 
-* Set environment variables to access Confluent Cloud resources, like Kafka, schema Kwy/secrets and bootstrap address:
+* Set environment variables to access Confluent Cloud resources, like Kafka, schema Key/secrets and bootstrap address. This can be done by looking terraform output:
     ```sh
     source ./scripts/set_env_from_tf.sh
     ```
 
-* Start the local webapp
+    or using your own scripts to get environment variables preset, to an existing Confluent Cloud environment.
+* Set where to find the specidic .env file. You can use different .env file and reference it via environment variable:
     ```sh
-    ./scripts/run_dev.sh 
+    export ENV_CONFIG_FILE=$PWD/apps/backend/.env.j9r
     ```
 
 As an alternate when reusing an existing Confluent Cloud environment, set, via script the following environment variables:
@@ -59,8 +60,13 @@ echo "----------------"
 export DB_PASSWORD=
 export DBNAME=
 export DATABASE_URL="postgresql://dbadmin:${DB_PASSWORD}@${RDSHOST}:${RDSPORT}/${DBNAME}"
-
 ```
+
+* Start the local webapp
+    ```sh
+    ./scripts/run_dev.sh 
+    ```
+
 
 ## Demonstration Scenarios
 ### Customers Management

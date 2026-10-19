@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # Debezium-shaped event to cdc.public.* after each successful DB change.
     KAFKA_PRODUCE_ENABLED: bool = False
 
+    # When True, on startup the backend loads the seed CSVs and publishes every
+    # record as a Debezium "create" event to the cdc.public.* topics
+    # (customers → accounts → transactions). Skipped when a CDC connector owns
+    # Kafka (CDC_CONNECTOR_ENABLED) to avoid double-publishing.
+    KAFKA_SEED_ON_START: bool = False
+
     DATABASE_URL: str | None = None
     KAFKA_BOOTSTRAP_SERVERS: str | None = None
     KAFKA_API_KEY: str | None = None

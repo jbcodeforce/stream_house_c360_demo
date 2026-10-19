@@ -1,9 +1,4 @@
-"""In-memory account inventory backed by a CSV file.
-
-The seed CSV carries only the create-time columns; server-assigned fields
-(account_id, created_at, updated_at) are generated when a row is loaded, and
-CSV writes keep the original 9-column schema.
-"""
+"""In-memory account inventory backed by a CSV file."""
 
 import csv
 import os
@@ -15,16 +10,6 @@ from accounts.models import Account
 
 _CSV_PATH = Path(__file__).parent / "data" / "accounts.csv"
 
-# Fixed namespace so account_id is derived deterministically from the stable
-# account_number. The seed CSV carries no account_id, so a random id would be
-# minted on every load and drift across restarts — breaking the transactions
-# foreign key when accounts and transactions are re-seeded independently.
-_ACCOUNT_ID_NAMESPACE = UUID("6ba7b814-9dad-11d1-80b4-00c04fd430c8")
-
-
-def _account_id_for(account_number: str) -> str:
-    return str(uuid5(_ACCOUNT_ID_NAMESPACE, account_number))
-
 
 def _csv_path() -> Path:
     """Resolve the CSV path, honouring the ACCOUNTS_CSV_PATH override.
@@ -35,7 +20,7 @@ def _csv_path() -> Path:
     override = os.getenv("ACCOUNTS_CSV_PATH")
     return Path(override) if override else _CSV_PATH
 
-# CSV columns (server-assigned fields are not stored in the file)
+
 _FIELDNAMES = [
     "customer_id",
     "account_number",
@@ -48,11 +33,22 @@ _FIELDNAMES = [
     "status",
 ]
 
+# Fixed namespace so account_id is derived deterministically from the stable
+# account_number. The seed CSV carries no account_id, so a random id would be
+# minted on every load and drift across restarts — breaking the transactions
+# foreign key when accounts and transactions are re-seeded independently.
+_ACCOUNT_ID_NAMESPACE = UUID("6ba7b814-9dad-11d1-80b4-00c04fd430c8")
+
+
+def _account_id_for(account_number: str) -> str:
+    return str(uuid5(_ACCOUNT_ID_NAMESPACE, account_number))
+
+
 _accounts: list[Account] = []
 
 
 def _row_to_account(row: dict) -> Account:
-    """Convert a CSV row to an Account, generating server-assigned fields."""
+    """Convert a CSV row dict to an Account, treating empty strings as None."""
     cleaned = {k: (v if v != "" else None) for k, v in row.items()}
     now = datetime.now(tz=timezone.utc)
     cleaned["account_id"] = _account_id_for(row["account_number"])
@@ -62,7 +58,7 @@ def _row_to_account(row: dict) -> Account:
 
 
 def _account_to_row(account: Account) -> dict:
-    """Serialise an Account to a CSV row dict (create-time columns only)."""
+    """Serialise an Account to a CSV row dict."""
     return {
         "customer_id": str(account.customer_id),
         "account_number": account.account_number,
@@ -118,7 +114,7 @@ def update(account: Account) -> Account:
 
 
 def delete_by_id(account_id: UUID) -> bool:
-    """Remove an account from the cache and rewrite the CSV. True if found."""
+    """Remove an account from the cache and rewrite the CSV. Returns True if found."""
     global _accounts
     before = len(_accounts)
     _accounts = [a for a in _accounts if a.account_id != account_id]
