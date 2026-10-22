@@ -25,7 +25,6 @@ CREATE TABLE IF NOT EXISTS cdc.public.transactions (
     merchant_category STRING,
     channel         STRING,
     status          STRING,
-    reference_id    STRING,
     transacted_at   TIMESTAMP_LTZ,
     posted_at       TIMESTAMP_LTZ,
     created_at      TIMESTAMP_LTZ,

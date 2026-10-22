@@ -9,6 +9,7 @@ import AccountFormPage from './pages/AccountFormPage'
 import TransactionsPage from './pages/TransactionsPage'
 import TransactionDetailPage from './pages/TransactionDetailPage'
 import TransactionFormPage from './pages/TransactionFormPage'
+import GeneratedTransactionsPage from './pages/GeneratedTransactionsPage'
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
         <Route path="/accounts/:id/edit" element={<AccountFormPage />} />
         <Route path="/transactions" element={<TransactionsPage />} />
         <Route path="/transactions/new" element={<TransactionFormPage />} />
+        <Route path="/transactions/generated" element={<GeneratedTransactionsPage />} />
         <Route path="/transactions/:id" element={<TransactionDetailPage />} />
       </Route>
     </Routes>

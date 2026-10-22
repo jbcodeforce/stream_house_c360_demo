@@ -29,7 +29,6 @@ _FIELDNAMES = [
     "merchant_category",
     "channel",
     "status",
-    "reference_id",
     "transacted_at",
     "posted_at",
     "created_at",
@@ -62,7 +61,11 @@ def _row_to_transaction(row: dict) -> Transaction:
     if account_number is not None:
         cleaned.setdefault("account_id", _account_id_for(account_number))
     if not cleaned.get("transaction_id"):
-        key = f"{account_number}|{cleaned.get('reference_id')}|{cleaned.get('transacted_at')}"
+        key = (
+            f"{account_number}|{cleaned.get('transacted_at')}|"
+            f"{cleaned.get('transaction_type')}|{cleaned.get('amount')}|"
+            f"{cleaned.get('merchant_name')}"
+        )
         cleaned["transaction_id"] = str(uuid5(_ACCOUNT_ID_NAMESPACE, key))
     if not cleaned.get("created_at"):
         cleaned["created_at"] = datetime.now(tz=timezone.utc)
@@ -83,7 +86,6 @@ def _transaction_to_row(txn: Transaction) -> dict:
         "merchant_category": txn.merchant_category or "",
         "channel": txn.channel or "",
         "status": txn.status,
-        "reference_id": txn.reference_id or "",
         "transacted_at": txn.transacted_at.isoformat(),
         "posted_at": txn.posted_at.isoformat() if txn.posted_at else "",
         "created_at": txn.created_at.isoformat(),

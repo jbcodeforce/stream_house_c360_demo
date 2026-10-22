@@ -19,13 +19,11 @@ class TransactionCreate(BaseModel):
     merchant_category: str | None = None
     channel: str | None = None
     status: str = "COMPLETED"
-    reference_id: str | None = None
     transacted_at: datetime = Field(default_factory=_now)
     posted_at: datetime | None = None
 
 
 class Transaction(TransactionCreate):
     model_config = ConfigDict(from_attributes=True)
-
     transaction_id: UUID
     created_at: datetime

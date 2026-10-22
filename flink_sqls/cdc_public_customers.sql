@@ -9,9 +9,8 @@
 
 CREATE TABLE IF NOT EXISTS cdc.public.customers (
     -- CDC envelope fields (Debezium Envelope record)
-    __table       STRING,
-    __timestamp   STRING,
-    __operation   STRING,
+    ts_ms   STRING,
+    op   STRING,
 
     -- Customer attributes (CDC after-image)
     customer_id   STRING,

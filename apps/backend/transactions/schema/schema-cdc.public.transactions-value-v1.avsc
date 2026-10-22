@@ -104,14 +104,6 @@
               }
             },
             {
-              "default": null,
-              "name": "reference_id",
-              "type": [
-                "null",
-                "string"
-              ]
-            },
-            {
               "default": "1970-01-01T00:00:00.000000Z",
               "name": "transacted_at",
               "type": {

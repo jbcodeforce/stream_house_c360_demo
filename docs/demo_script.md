@@ -90,6 +90,10 @@ The transactions page presents a list of current transactions in the real databa
 
 ![](./images/web_tx.png)
 
+To simulate a week of activity, click **Generate 200 transactions**. The backend creates 200 transactions on existing accounts, timestamped from 7 days ago in 15-minute increments, inserts them in Postgres and (when `KAFKA_PRODUCE_ENABLED=true` and no CDC connector owns Kafka) publishes them to the `cdc.public.transactions` topic. The page then shows the newly created transactions (the list is not kept after a browser refresh).
+
+
+
 
 ### Verify data are in tables. 
 

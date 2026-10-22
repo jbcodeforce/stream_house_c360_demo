@@ -13,9 +13,9 @@ from transactions.models import Transaction
 
 _CUST = "00000000-0000-0000-0000-ef1234567890"
 _HEADER = ("customer_id,account_number,transaction_type,amount,currency,description,"
-           "merchant_name,merchant_category,channel,status,reference_id,transacted_at,posted_at\n")
+           "merchant_name,merchant_category,channel,status,transacted_at,posted_at\n")
 _ROW1 = (f"{_CUST},CHK-1,CREDIT,99.90,USD,Credit transaction,Amazon,RETAIL,ONLINE,COMPLETED,"
-         "REF-1,2024-01-01T00:00:00+00:00,2024-01-01T00:00:00+00:00\n")
+         "2024-01-01T00:00:00+00:00,2024-01-01T00:00:00+00:00\n")
 
 def _account(number: str) -> Account:
     now = datetime.now(tz=timezone.utc)

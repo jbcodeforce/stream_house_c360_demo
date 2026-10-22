@@ -3,16 +3,36 @@
   "groups": {
     "pipeline": [
       {
-        "name": "models-c360-sources-pipeline-src-dedup-accounts",
-        "file": "c360/sources/src_dedup_accounts.sql"
+        "name": "models-c360-dimensions-pipeline-dim-account-tx-agg",
+        "file": "c360/dimensions/dim_account_tx_agg.sql"
       },
       {
-        "name": "models-c360-sources-pipeline-src-dedup-customers",
-        "file": "c360/sources/src_dedup_customers.sql"
+        "name": "models-c360-dimensions-pipeline-dim-customers",
+        "file": "c360/dimensions/dim_customers.sql"
       },
       {
-        "name": "models-c360-sources-pipeline-src-dedup-transactions",
-        "file": "c360/sources/src_dedup_transactions.sql"
+        "name": "models-c360-dimensions-pipeline-dim-transactions",
+        "file": "c360/dimensions/dim_transactions.sql"
+      },
+      {
+        "name": "models-c360-dimensions-pipeline-dim-tx-x-account",
+        "file": "c360/dimensions/dim_tx_x_account.sql"
+      },
+      {
+        "name": "models-c360-facts-pipeline-fct-c360-profile",
+        "file": "c360/facts/fct_c360_profile.sql"
+      },
+      {
+        "name": "models-c360-sources-pipeline-src-accounts",
+        "file": "c360/sources/src_accounts.sql"
+      },
+      {
+        "name": "models-c360-sources-pipeline-src-customers",
+        "file": "c360/sources/src_customers.sql"
+      },
+      {
+        "name": "models-c360-sources-pipeline-src-transactions",
+        "file": "c360/sources/src_transactions.sql"
       }
     ]
   },
@@ -23,7 +43,9 @@
     "pipeline"
   ],
   "drop_tables": [
-    
+    "cdc.public.customers",
+    "cdc.public.accounts",
+    "cdc.public.transactions"
   ],
   "drop_statement_prefix": "models-drop"
 }

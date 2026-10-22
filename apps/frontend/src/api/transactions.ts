@@ -12,3 +12,7 @@ export function getTransaction(id: string): Promise<Transaction> {
 export function createTransaction(data: TransactionCreate): Promise<Transaction> {
   return request<Transaction>('/transactions', { method: 'POST', body: JSON.stringify(data) })
 }
+
+export function generateTransactions(): Promise<Transaction[]> {
+  return request<Transaction[]>('/transactions/generate', { method: 'POST' })
+}

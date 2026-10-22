@@ -12,6 +12,19 @@ from transactions.models import Transaction, TransactionCreate
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
 
+@router.post("/generate", response_model=list[Transaction], status_code=201)
+def generate_transactions() -> list[Transaction]:
+    try:
+        return service.generate()
+    except service.NoEligibleAccountsError:
+        raise HTTPException(status_code=409, detail="No active accounts available")
+    except service.UnsupportedSinkError as exc:
+        raise HTTPException(
+            status_code=501,
+            detail=f"Generation requires SINK=postgres (current sink: {exc})",
+        )
+
+
 @router.post("", response_model=Transaction, status_code=201)
 def create_transaction(data: TransactionCreate) -> Transaction:
     return service.create(data)

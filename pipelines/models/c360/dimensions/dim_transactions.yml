@@ -1,0 +1,48 @@
+
+models:
+- name: dim_transactions
+  description: ""
+  config:
+    contract:
+      enforced: true
+  columns:
+  - name: transaction_id
+    data_type: varchar(2147483647)
+    constraints:
+      - type: not_null
+      - type: primary_key
+        expression: "not enforced"
+  - name: account_id
+    data_type: string
+  - name: customer_id
+    data_type: string
+  - name: transaction_type
+    data_type: string
+  - name: amount
+    data_type: DECIMAL
+  - name: currency
+    data_type: string
+  - name: comments
+    data_type: string
+  - name: merchant_name
+    data_type: string
+  - name: merchant_category
+    data_type: string
+  - name: status
+    data_type: string
+  - name: transacted_at
+    data_type: timestamp_ltz
+  - name: transaction_date_only 
+    data_type: DATE
+  - name:  transaction_hour 
+    data_type: bigint
+  - name: day_of_week
+    data_type: bigint
+  - name:  transaction_month
+    data_type: bigint
+  - name:  transaction_quarter
+    data_type: bigint
+  - name:  transaction_year
+    data_type: bigint
+  - name: order_size_category
+    data_type: string

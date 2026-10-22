@@ -122,3 +122,31 @@ When extending this repository, adhere to the following principles:
 - Run scripts with `uv run python <script>.py` — uv handles the virtualenv automatically.
 - Add new packages with `uv add <package>`; never edit `pyproject.toml` dependencies manually.
 - Python version minimum: **3.11**. Always declare `requires-python = ">=3.11"` in `pyproject.toml`.
+
+---
+
+## 5. Statement Graph Page — recon notes (in design)
+
+A new frontend page to visualize the deployed Flink statements that build a data
+product as a DAG, with live status/metrics from the Confluent Cloud REST API.
+Audience: solution engineers demoing "the art of the possible" (green-and-flowing,
+then drill into a node for metrics). Relevant existing structure:
+
+**Frontend** (`apps/frontend`): React 19 + Vite 8, `react-router-dom` 7,
+`lucide-react` icons, plain CSS in `src/styles/index.css` (no CSS framework).
+Pages in `src/pages/*`, routed in `src/App.tsx` under a shared `AppLayout`.
+Static `Sidebar.tsx` nav. API via `src/api/client.ts` → `request<T>()` hitting
+`VITE_API_BASE_URL` (default `http://localhost:8000/api/v1`). No graph library yet.
+
+**Backend** (`apps/backend`): FastAPI, routers per entity under `api/` mounted at
+`/api/v1`. CORS allows `localhost:5173`. `config.py::Settings` already holds Kafka +
+Schema Registry creds; no Confluent Flink/REST proxy yet. No metrics/statements route yet.
+
+**Pipeline topology** (source of the graph's nodes/edges): dbt (shift-left) under
+`pipelines/`, compiled to Flink SQL. Dependency DAG (`pipelines/target/manifest.json`,
+`pipelines/models/deploy_manifest.json`):
+- Sources (CDC topics): `cdc.public.customers`, `cdc.public.accounts`, `cdc.public.transactions`
+- Models/statements: `src_customers`, `src_accounts`, `src_transactions` (each ← its CDC source),
+  plus `src_dedup_*` variants. Deploy group `pipeline` in `deploy_manifest.json`.
+
+**Confluent CLI/Flink tooling** present as skills: `flink-deploy`, `manifest`, `kafka`.

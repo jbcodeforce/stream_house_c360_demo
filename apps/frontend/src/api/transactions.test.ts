@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as client from './client'
-import { createTransaction, getTransaction, listTransactions } from './transactions'
+import { createTransaction, generateTransactions, getTransaction, listTransactions } from './transactions'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -22,5 +22,11 @@ describe('transactions api', () => {
     const body = { account_id: 'a1', customer_id: 'c1', transaction_type: 'CREDIT', amount: 5 }
     await createTransaction(body)
     expect(spy).toHaveBeenCalledWith('/transactions', { method: 'POST', body: JSON.stringify(body) })
+  })
+
+  it('generateTransactions POSTs to /transactions/generate', async () => {
+    const spy = vi.spyOn(client, 'request').mockResolvedValue([])
+    await generateTransactions()
+    expect(spy).toHaveBeenCalledWith('/transactions/generate', { method: 'POST' })
   })
 })

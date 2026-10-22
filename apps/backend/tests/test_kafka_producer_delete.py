@@ -33,6 +33,6 @@ def test_produce_delete_produces_d_event():
 
     fake_producer.produce.assert_called_once()
     kwargs = fake_producer.produce.call_args.kwargs
-    assert kwargs["key"] == str(customer.customer_id)
+    assert kwargs["key"] == {"customer_id": str(customer.customer_id)}
     assert kwargs["value"]["op"] == "d"  # Debezium delete op code
     fake_producer.flush.assert_called_once()

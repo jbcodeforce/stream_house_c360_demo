@@ -17,7 +17,7 @@ def _txn(**over) -> Transaction:
         transaction_id=uuid4(), account_id=uuid4(), customer_id=uuid4(),
         transaction_type="CREDIT", amount=99.9, currency="USD", description="x",
         merchant_name=None, merchant_category=None, channel="ONLINE",
-        status="COMPLETED", reference_id="REF-1", transacted_at=now,
+        status="COMPLETED", transacted_at=now,
         posted_at=None, created_at=now,
     )
     base.update(over)

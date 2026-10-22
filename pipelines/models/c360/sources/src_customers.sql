@@ -1,6 +1,6 @@
 
 {{ config(
-    materialized='streaming_table',
+    materialized='materialized_table',
     distributed_by= {'columns': ['customer_id'], 'buckets': 2},
     with={
         'changelog.mode': 'upsert',
@@ -11,9 +11,31 @@
         'scan.bounded.mode': 'unbounded',
         'scan.startup.mode': 'earliest-offset',
         'value.fields-include': 'all'
-    }
+    },
+     pre_hook=[
+        "ALTER TABLE {{ source('cdc', 'customers') }} SET ( 'changelog.mode' = 'append')", 
+        "ALTER TABLE {{ source('cdc', 'customers') }} SET ('value.format' = 'avro-registry')",
+    ]
 ) }}
-
+WITH mapped AS (
+  SELECT
+    customer_id,
+    coalesce(IF(op= 'd', before.first_name, after.first_name), 'NULL') as first_name,
+    coalesce(IF(op= 'd', before.last_name, after.last_name), 'NULL') as last_name,
+    coalesce(IF(op= 'd', before.email, after.email), 'NULL') as email,
+    coalesce(IF(op= 'd', before.phone, after.phone), 'NULL') as phone,
+    coalesce(IF(op= 'd', before.date_of_birth, after.date_of_birth), 10) as date_of_birth,
+    coalesce(IF(op= 'd', before.gender, after.gender), 'NULL') as gender,
+    coalesce(IF(op= 'd', before.created_at, after.created_at), 'NULL') as registration_date,
+    coalesce(IF(op= 'd', before.segment, after.segment), 'NULL')   as customer_segment,
+    coalesce(IF(op= 'd', before.customer_since, after.customer_since), 10) as customer_since,
+    coalesce(IF(op= 'd', before.city, after.city), 'NULL') as city,
+    coalesce(IF(op= 'd', before.state, after.state), 'NULL') as state,
+    coalesce(IF(op= 'd', before.postal_code, after.postal_code), 'NULL') as postal_code,
+    coalesce(IF(op= 'd', before.country, after.country), 'NULL') as country,
+    `$rowtime` as event_ts
+    FROM {{ source('cdc', 'customers') }}
+)
 SELECT 
     customer_id,
     first_name,
@@ -22,26 +44,12 @@ SELECT
     phone,
     date_of_birth,
     gender,
-     created_at as registration_date,,
-    segment as customer_segment,
+    registration_date,
+    customer_segment,
+    customer_since,
     city,
-    state,
+    `state`,
     postal_code,
     country,
-     `$rowtime` as event_ts,
-    TIMESTAMPDIFF(YEAR, CAST(date_of_birth AS TIMESTAMP_LTZ(3)), event_ts) age_years,
-    TIMESTAMPDIFF(DAY, CAST(registration_date AS TIMESTAMP_LTZ(3)), event_ts) as days_since_registration,
-     CASE
-        WHEN TIMESTAMPDIFF(YEAR, CAST(date_of_birth AS TIMESTAMP_LTZ(3)), event_ts)  < 25 THEN 'Gen Z'
-        WHEN TIMESTAMPDIFF(YEAR, CAST(date_of_birth AS TIMESTAMP_LTZ(3)), event_ts)  < 40 THEN 'Millennial'
-        WHEN TIMESTAMPDIFF(YEAR, CAST(date_of_birth AS TIMESTAMP_LTZ(3)), event_ts) < 55 THEN 'Gen X'
-        ELSE 'Boomer+' END AS generation_segment,
-    CASE
-        WHEN email IS NULL
-        OR email = '' THEN 1
-        ELSE 0 END AS missing_email_flag,
-     CASE
-        WHEN phone IS NULL
-        OR phone = '' THEN 1
-        ELSE 0 END AS missing_phone_flag
-FROM {{ source('cdc', 'cdc.public.customers') }}
+    event_ts
+FROM mapped

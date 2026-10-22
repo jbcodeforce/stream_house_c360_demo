@@ -7,7 +7,7 @@ import TransactionDetailPage from './TransactionDetailPage'
 
 const txn = {
   transaction_id: 't1', account_id: 'a1', customer_id: 'c1', transaction_type: 'CREDIT',
-  amount: 99.9, currency: 'USD', status: 'COMPLETED', reference_id: 'REF-1',
+  amount: 99.9, currency: 'USD', status: 'COMPLETED',
   transacted_at: '2024-01-01T00:00:00+00:00', posted_at: null, created_at: '',
 }
 
@@ -25,7 +25,7 @@ describe('TransactionDetailPage', () => {
   it('renders transaction fields', async () => {
     vi.spyOn(api, 'getTransaction').mockResolvedValue(txn as never)
     renderAt('t1')
-    expect(await screen.findByRole('heading', { name: /REF-1/ })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /t1/ })).toBeInTheDocument()
     expect(screen.getByText('CREDIT')).toBeInTheDocument()
   })
 

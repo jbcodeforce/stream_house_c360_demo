@@ -181,6 +181,7 @@ The Confluent Cloud Flink statement organization reflects the medaillon and star
 
         uv run  sl-dbt get-schema-existing-topic-to-dbt ~/Code/stream_house_c360_demo/ cdc.public.transactions
       ```
+
 1. Be sure to modify your `.dbt/profiles.yml` with the following element.
     ```yaml
     cc_flink:
@@ -206,21 +207,29 @@ The Confluent Cloud Flink statement organization reflects the medaillon and star
 
 1. Continue to create the following flink statements to filter and transform raw CDC topics, create dimension and fact for the analytics.
 
-| Source Table(s) | Folder Name | Sink Table |
-| ----------------| ------------ |-----------| 
-| cdc.public.accounts | sources | src_accounts | 
-| cdc.public.customers | sources | src_customers | 
-| cdc.public.transactions| sources | src_transactions |
-| src_dedup_customers, src_dedup_accounts | dimension |  dim_customers|
-| dim_customers, src_transactions | facts | fct_c360_profiles |
+| Source Table(s) | Folder Name | Sink Table | Goal |
+| ----------------| ------------ |-----------|-----|
+| cdc.public.accounts | sources | src_accounts | Deduplicate, flatten, filter, transform |
+| cdc.public.customers | sources | src_customers | eduplicate, flatten, filter, transform |
+| cdc.public.transactions| sources | src_transactions | eduplicate, flatten, filter, transform |
+| src_customers | dimension |  dim_customers| Compute customer dimension |
+| src_customers, src_account | dimension |  dim_customers| Compute transaction cross account metrics |
+| dim_customers, | facts | fct_c360_profiles |
 
 
 ## Undeploy
 
-1. Undeploy and delete Flink create topics: as dbt does not support undeploying, we need another tool to manage the drop table. The [flink-tools-for-agents](https://github.com/jbcodeforce/flink-tools-for-agents/tree/main/tools/flink) includes tools to define a manifest of metadata and then perform deplooy, undeploy and drop tables. 
+1. As dbt does not support undeploying, we need another tool to manage the drop table and undeploy statement. The [flink-tools-for-agents](https://github.com/jbcodeforce/flink-tools-for-agents/tree/main/tools/flink) includes tools to define a manifest of metadata about existing statements and then perform deplooy, undeploy and drop tables. 
     ```sh
     cd flink-tools-for-agents 
     uv run generate-manifest --sql-dir ../stream_house_c360_demo/pipelines/models 
+    # OR
+    uv run generate-manifest --sql-dir ../stream_house_c360_demo/pipelines/models --overwrite 
+    ```
+
+    Drop tables listed in the `drop_tables` element of the manifest
+    ```sh
+    uv run flink-sql-deploy  --sql-dir ../stream_house_c360_demo/pipelines/models drop-tables 
     ```
 
 ### IaC

@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
+import psycopg2.extras
+
 import db
 from transactions.models import Transaction, TransactionCreate
 
@@ -31,7 +33,6 @@ _DDL_STATEMENTS = [
         merchant_category VARCHAR(100),
         channel          VARCHAR(50),
         status           VARCHAR(20)    NOT NULL DEFAULT 'COMPLETED',
-        reference_id     VARCHAR(100),
         transacted_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         posted_at        TIMESTAMPTZ,
         created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
@@ -44,10 +45,10 @@ _DDL_STATEMENTS = [
 
 _INSERT_COLS = (
     "transaction_id, account_id, customer_id, transaction_type, amount, currency, "
-    "description, merchant_name, merchant_category, channel, status, reference_id, "
+    "description, merchant_name, merchant_category, channel, status, "
     "transacted_at, posted_at, created_at"
 )
-_PLACEHOLDERS = ", ".join(["%s"] * 15)
+_PLACEHOLDERS = ", ".join(["%s"] * 14)
 _SEED_SQL = (
     f"INSERT INTO transactions ({_INSERT_COLS}) VALUES ({_PLACEHOLDERS}) "
     f"ON CONFLICT (transaction_id) DO NOTHING"
@@ -61,7 +62,7 @@ def _insert_params(t: Transaction) -> tuple:
     return (
         str(t.transaction_id), str(t.account_id), str(t.customer_id),
         t.transaction_type, t.amount, t.currency, t.description, t.merchant_name,
-        t.merchant_category, t.channel, t.status, t.reference_id,
+        t.merchant_category, t.channel, t.status,
         t.transacted_at, t.posted_at, t.created_at,
     )
 
@@ -85,6 +86,17 @@ def create(data: TransactionCreate) -> Transaction:
         cur.execute(_INSERT_RETURNING_SQL, _insert_params(transaction))
         row = cur.fetchone()
     return Transaction(**row)
+
+
+def create_many(transactions: list[Transaction]) -> list[Transaction]:
+    """Insert all *transactions* atomically in a single DB transaction."""
+    if not transactions:
+        return []
+    with db.cursor(commit=True) as cur:
+        psycopg2.extras.execute_batch(
+            cur, _SEED_SQL, [_insert_params(t) for t in transactions], page_size=100
+        )
+    return transactions
 
 
 def get_by_id(transaction_id: UUID) -> Transaction | None:

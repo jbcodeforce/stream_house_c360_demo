@@ -15,7 +15,6 @@ const FIELDS: [keyof Transaction, string][] = [
   ['merchant_category', 'Merchant category'],
   ['channel', 'Channel'],
   ['status', 'Status'],
-  ['reference_id', 'Reference ID'],
   ['transacted_at', 'Transacted at'],
   ['posted_at', 'Posted at'],
 ]
@@ -43,7 +42,7 @@ export default function TransactionDetailPage() {
   return (
     <div className="detail">
       <div className="page-header">
-        <h1>Transaction {transaction.reference_id ?? transaction.transaction_id}</h1>
+        <h1>Transaction {transaction.transaction_id}</h1>
         <Link to="/transactions" className="btn btn--secondary">Back</Link>
       </div>
       <dl>

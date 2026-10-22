@@ -9,7 +9,6 @@ export interface TransactionCreate {
   merchant_category?: string | null
   channel?: string | null
   status?: string | null
-  reference_id?: string | null
   transacted_at?: string | null
   posted_at?: string | null
 }

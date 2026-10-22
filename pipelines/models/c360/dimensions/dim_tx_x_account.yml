@@ -1,0 +1,25 @@
+
+models:
+- name: dim_tx_x_account
+  description: ""
+  config:
+    contract:
+      enforced: true
+  columns:
+  - name: customer_id
+    data_type: string
+    constraints:
+      - type: not_null
+      - type: primary_key
+        expression: "not enforced"
+  - name: account_count
+    data_type: int
+  - name: total_balance
+    data_type: decimal
+  - name: txn_count
+    data_type: decimal
+  - name: txn_total
+    data_type: decimal
+  - name: last_transacted_at
+    data_type: timestamp_ltz
+

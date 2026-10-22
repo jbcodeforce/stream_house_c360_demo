@@ -18,8 +18,33 @@ from transactions import inventory as transaction_inventory
 logger = logging.getLogger("c360.main")
 
 
+def _configure_logging() -> None:
+    """Make the ``c360.*`` traces visible under uvicorn (which leaves root alone)."""
+    c360 = logging.getLogger("c360")
+    c360.setLevel(logging.INFO)
+    if not c360.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        )
+        c360.addHandler(handler)
+
+
+_configure_logging()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.CDC_CONNECTOR_ENABLED:
+        logger.info("[bypass] OFF — a CDC connector owns the cdc.public.* topics")
+    elif settings.KAFKA_PRODUCE_ENABLED or settings.KAFKA_SEED_ON_START or settings.SINK == "kafka":
+        logger.info(
+            "[bypass] ON — backend writes Debezium-shaped events directly to Kafka "
+            "(produce=%s, seed_on_start=%s, sink=%s)",
+            settings.KAFKA_PRODUCE_ENABLED, settings.KAFKA_SEED_ON_START, settings.SINK,
+        )
+    else:
+        logger.info("[bypass] OFF — KAFKA_PRODUCE_ENABLED and KAFKA_SEED_ON_START are false")
     if settings.SINK == "postgres":
         bootstrap.init_and_seed()
     elif settings.SINK == "kafka":

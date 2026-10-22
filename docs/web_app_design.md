@@ -153,7 +153,6 @@ The database has three main tables:
         merchant_category VARCHAR(100),
         channel          VARCHAR(50),   -- 'ONLINE', 'ATM', 'POS', 'MOBILE', 'BRANCH'
         status           VARCHAR(20)    NOT NULL DEFAULT 'COMPLETED',
-        reference_id     VARCHAR(100),  -- external reference / idempotency key
         transacted_at    TIMESTAMPTZ    NOT NULL DEFAULT NOW(),
         posted_at        TIMESTAMPTZ,
         created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()

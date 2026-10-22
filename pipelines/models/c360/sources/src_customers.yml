@@ -28,6 +28,8 @@ models:
     data_type: string
   - name: customer_segment
     data_type: string
+  - name: customer_since
+    data_type: int
   - name: city
     data_type: string
   - name: state
@@ -38,13 +40,4 @@ models:
     data_type: string
   - name: event_ts
     data_type: timestamp_ltz
-  - name: age_years
-    data_type: integer
-  - name: days_since_registration
-    data_type: integer
-  - name: generation_segment
-    data_type: string
-  - name: missing_email_flag
-    data_type: integer
-  - name: missing_phone_flag
-    data_type: integer
+

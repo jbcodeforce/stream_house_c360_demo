@@ -3,7 +3,7 @@
 -- Schema-drift detection only checks columns, types, and WITH options — query logic
 -- changes are not detected and will be silently skipped on a normal `dbt run`.
 {{ config(
-    materialized = 'streaming_table',
+    materialized = 'materialized_table',
     distributed_by={'columns': ['transaction_id'], 'buckets': 1},
     with= {
         'changelog.mode': 'append',
@@ -13,7 +13,22 @@
         'value.format': 'avro-registry'
     }
 ) }}
-
+WITH relevant_tx AS (
+    SELECT
+        transaction_id, 
+        account_id, 
+        customer_id, 
+        transaction_type, 
+        amount, 
+        currency,
+        description as comments, 
+        merchant_name,
+        merchant_category,
+        `status`, 
+        CAST(REPLACE(REPLACE(transacted_at, 'T', ' '), 'Z', '') AS TIMESTAMP_LTZ(6)) AS transacted_at
+    FROM TO_CHANGELOG(input => TABLE {{ source('cdc', 'transactions') }}, op => DESCRIPTOR(op))
+       WHERE op = 'c' and status <> 'CANCELLED'
+)
 SELECT
   transaction_id, 
   account_id, 
@@ -21,9 +36,9 @@ SELECT
   transaction_type, 
   amount, 
   currency,
-  line_items,
   comments, 
+  merchant_name,
+  merchant_category,
   `status`, 
-  CAST(REPLACE(REPLACE(transacted_at, 'T', ' '), 'Z', '') AS TIMESTAMP(6)) AS transacted_at
-FROM TO_CHANGELOG(input => TABLE {{ source('cdc', 'transactions') }}, op => DESCRIPTOR(op))
-WHERE op = 'INSERT' and status <> 'CANCELLED'
+  transacted_at
+FROM relevant_tx

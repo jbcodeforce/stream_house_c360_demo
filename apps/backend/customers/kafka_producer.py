@@ -20,9 +20,9 @@ from pathlib import Path
 from confluent_kafka.schema_registry import SchemaRegistryClient
 from confluent_kafka.schema_registry.avro import AvroSerializer
 from confluent_kafka.serializing_producer import SerializingProducer
-from confluent_kafka.serialization import StringSerializer
 
 from config import settings
+from kafka_setup import ensure_kafka_resources
 from customers.models import Customer
 
 # ---------------------------------------------------------------------------
@@ -31,6 +31,10 @@ from customers.models import Customer
 
 _SCHEMA_PATH = Path(__file__).parent / "schema" / "customer.avro"
 _SCHEMA_STR: str = _SCHEMA_PATH.read_text(encoding="utf-8")
+
+# Key schema (`cdc.public.customers.Key`) — Avro record, as Debezium emits it
+_KEY_SCHEMA_PATH = Path(__file__).parent / "schema" / "customer_key.avro"
+_KEY_SCHEMA_STR: str = _KEY_SCHEMA_PATH.read_text(encoding="utf-8")
 
 # Debezium op codes (lowercase, matching CDC connector output)
 _OP_CREATE = "c"
@@ -123,6 +127,11 @@ def _build_source(ts_ms: int) -> dict:
     }
 
 
+def _build_key(customer: Customer) -> dict:
+    """Build a Debezium Key record from a Customer."""
+    return {"customer_id": str(customer.customer_id)}
+
+
 def _build_envelope(customer: Customer, op: str) -> dict:
     """Build a full Debezium Envelope message.
 
@@ -169,10 +178,19 @@ def _on_delivery(err, msg) -> None:  # noqa: ANN001 — confluent callback signa
     """Delivery-report callback: log failures so they are never silent."""
     if err is not None:
         logger.warning("Kafka delivery failed: %s", err)
+        return
+    logger.info(
+        "[bypass] DELIVERED to %s [partition %s] @ offset %s",
+        msg.topic(), msg.partition(), msg.offset(),
+    )
 
 
 def init_producer() -> SerializingProducer:
     """Initialise and return a SerializingProducer backed by Avro + SR."""
+    logger.info(
+        "[bypass] Initialising Kafka producer for %s (bootstrap=%s)",
+        settings.KAFKA_TOPIC_CUSTOMERS, settings.KAFKA_BOOTSTRAP_SERVERS,
+    )
     sr_client = SchemaRegistryClient(
         {
             "url": settings.SCHEMA_REGISTRY_URL,
@@ -188,24 +206,34 @@ def init_producer() -> SerializingProducer:
         schema_str=_SCHEMA_STR,
         to_dict=_envelope_to_dict,
     )
+    key_serializer = AvroSerializer(
+        schema_registry_client=sr_client,
+        schema_str=_KEY_SCHEMA_STR,
+        to_dict=_envelope_to_dict,
+    )
 
-    producer_config: dict = {
-        "bootstrap.servers": settings.KAFKA_BOOTSTRAP_SERVERS,
-        "key.serializer": StringSerializer("utf_8"),
-        "value.serializer": avro_serializer,
-    }
+    client_conf: dict = {"bootstrap.servers": settings.KAFKA_BOOTSTRAP_SERVERS}
 
     # Confluent Cloud requires SASL_SSL. Add auth only when credentials are set
     # so local/test brokers (no auth) still work without config.
     if settings.KAFKA_API_KEY and settings.KAFKA_API_SECRET:
-        producer_config.update({
+        client_conf.update({
             "security.protocol": "SASL_SSL",
             "sasl.mechanisms": "PLAIN",
             "sasl.username": settings.KAFKA_API_KEY,
             "sasl.password": settings.KAFKA_API_SECRET,
         })
 
-    return SerializingProducer(producer_config)
+    ensure_kafka_resources(
+        client_conf, sr_client, settings.KAFKA_TOPIC_CUSTOMERS,
+        _KEY_SCHEMA_STR, _SCHEMA_STR,
+    )
+
+    return SerializingProducer({
+        **client_conf,
+        "key.serializer": key_serializer,
+        "value.serializer": avro_serializer,
+    })
 
 
 def _get_producer() -> SerializingProducer:
@@ -229,9 +257,13 @@ def _produce(customer: Customer, op: str, flush_timeout: float | None = None) ->
     unbounded, preserving the SINK=kafka path's at-least-once semantics.
     """
     producer = _get_producer()
+    logger.info(
+        "[bypass] Sending customer op=%s id=%s directly to Kafka topic %s (no CDC connector)",
+        op, customer.customer_id, settings.KAFKA_TOPIC_CUSTOMERS,
+    )
     producer.produce(
         topic=settings.KAFKA_TOPIC_CUSTOMERS,
-        key=str(customer.customer_id),
+        key=_build_key(customer),
         value=_build_envelope(customer, op),
         on_delivery=_on_delivery,
     )

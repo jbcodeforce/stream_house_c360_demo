@@ -56,6 +56,15 @@ Exposes an **Accounts CRUD REST API** mirroring customers, stored in Postgres.
 
 When `KAFKA_PRODUCE_ENABLED` is on, create/update/delete also emit a best-effort Debezium envelope to `KAFKA_TOPIC_ACCOUNTS` (default `cdc.public.accounts`); failures are logged, never failing the DB op.
 
+## Generating transactions (`POST /transactions/generate`)
+
+Creates 200 transactions on **existing, ACTIVE accounts** (each with its owning `customer_id` and the account currency) and returns them (201). `409` if no active account exists; `501` unless `SINK=postgres`.
+
+Timestamps simulate a week of organic activity regardless of how fast the batch is produced: the first `transacted_at` is *now − 7 days* and each next transaction is *+15 minutes* (200 transactions span ~50 h). `posted_at` equals `transacted_at`.
+
+Rows are inserted in a single DB transaction. Kafka publishing follows the same gating as a single create: events go to `KAFKA_TOPIC_TRANSACTIONS` (one flush for the whole batch) only when `CDC_CONNECTOR_ENABLED=false` **and** `KAFKA_PRODUCE_ENABLED=true`; failures are logged and never fail the request. The frontend Transactions page exposes this as the **Generate 200 transactions** button and then shows the result on `/transactions/generated`.
+
+
 ## Seeding Kafka at startup (`KAFKA_SEED_ON_START`)
 
 When `KAFKA_SEED_ON_START=true` (default `false`), the lifespan loads the seed CSVs and publishes every record as a Debezium `create` event to `KAFKA_TOPIC_CUSTOMERS`, `KAFKA_TOPIC_ACCOUNTS` and `KAFKA_TOPIC_TRANSACTIONS` (in that order). It is best-effort (failures are logged, startup continues) and is ignored when `CDC_CONNECTOR_ENABLED` is true, since the connector then owns those topics. It runs on every start, so enable it only when you want the records re-published; ids are deterministic, so re-runs upsert the same keys.

@@ -3,7 +3,7 @@
 -- Schema-drift detection only checks columns, types, and WITH options — query logic
 -- changes are not detected and will be silently skipped on a normal `dbt run`.
 {{ config(
-    materialized = 'streaming_table',
+    materialized = 'materialized_table',
     with= {
         'changelog.mode': 'upsert',
         'connector': 'confluent',
@@ -16,13 +16,13 @@
 
 select 
     account_id,
-    customer_id, 
+    customer_id,
+    account_number, 
     account_type, 
     balance,
-    point_balance,
     to_timestamp_ltz(`opened_date`) as opened_date,
     status    
-from {{ source('cdc', 'cdc.public.accounts')}}
+from {{ source('cdc', 'accounts')}}
 
 where status <> 'SUSPENDED'
 

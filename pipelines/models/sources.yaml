@@ -3,11 +3,11 @@ sources:
 - name: cdc
   schema: "{{ env_var('KAFKA_CLUSTER_NAME') }}"
   tables:
-  - name: cdc.public.customers
-    description: customer of the shoe shop
-  - name: cdc.public.accounts
+  - name: customers
+    identifier: cdc.public.customers
+  - name: accounts
     identifier: cdc.public.accounts
     description: accounts information for a customer    
-  - name: cdc.public.transactions
+  - name: transactions
     identifier: cdc.public.transactions
     description: Topic 'cdc.public.transactions' — registered via sl-dbt get-schema-existing-topic-to-dbt.
