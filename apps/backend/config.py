@@ -89,4 +89,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-print(settings.model_dump_json(indent=2))
