@@ -65,6 +65,21 @@ class Settings(BaseSettings):
     KAFKA_TOPIC_ACCOUNTS: str = "cdc.public.accounts"
     KAFKA_TOPIC_TRANSACTIONS: str = "cdc.public.transactions"
 
+    # Data Products graph page: selects the status/metrics provider.
+    # "mock" / "mock-lag" use deterministic fixtures; "live" talks to
+    # Confluent Cloud + Flink (Task 3).
+    GRAPH_DATA_MODE: str = "mock"
+
+    # Live-mode credentials (unused until Task 3's LiveProvider).
+    CONFLUENT_CLOUD_API_KEY: str | None = None
+    CONFLUENT_CLOUD_API_SECRET: str | None = None
+    FLINK_API_KEY: str | None = None
+    FLINK_API_SECRET: str | None = None
+    FLINK_ORG_ID: str | None = None
+    FLINK_ENV_ID: str | None = None
+    FLINK_COMPUTE_POOL_ID: str | None = None
+    FLINK_REST_ENDPOINT: str | None = None
+
     @model_validator(mode="after")
     def _resolve_cdc_connector(self) -> "Settings":
         """Infer CDC ownership from the DB host when not set explicitly."""

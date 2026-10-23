@@ -29,3 +29,32 @@ class DataProductSummary(BaseModel):
     name: str
     description: str
     statement_count: int
+
+
+class NodeStatus(BaseModel):
+    node_id: str
+    statement_name: str | None = None
+    phase: Literal["RUNNING", "PENDING", "DEGRADED", "FAILED", "STOPPED", "UNKNOWN"]
+    lagging: bool
+
+
+class StatusRollup(BaseModel):
+    running: int
+    total: int
+    lagging: int
+
+
+class StatusResponse(BaseModel):
+    statements: list[NodeStatus]
+    rollup: StatusRollup
+
+
+class NodeMetrics(BaseModel):
+    node_id: str
+    phase: str
+    uptime_seconds: int | None = None
+    messages_in_per_sec: float | None = None
+    messages_out_per_sec: float | None = None
+    pending_records: int | None = None
+    compute_pool_cfu: float | None = None
+    sql: str | None = None
