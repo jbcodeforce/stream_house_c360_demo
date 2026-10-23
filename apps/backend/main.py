@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import bootstrap
 from api.account_resource import router as account_router
 from api.customer_resource import router as customers_router
+from api.data_product_resource import router as data_product_router
 from api.transaction_resource import router as transaction_router
 from config import settings
 from customers import inventory as customers_inventory
@@ -74,6 +75,7 @@ app.add_middleware(
 app.include_router(customers_router, prefix="/api/v1")
 app.include_router(account_router, prefix="/api/v1")
 app.include_router(transaction_router, prefix="/api/v1")
+app.include_router(data_product_router, prefix="/api/v1")
 
 
 @app.get("/health")
