@@ -7,10 +7,10 @@ export interface DataProduct {
 
 export interface GraphNode {
   id: string
-  type: string
+  type: 'source' | 'statement'
   label: string
-  statement_name: string
-  topic: string
+  statement_name: string | null
+  topic: string | null
   is_product: boolean
 }
 
@@ -28,7 +28,7 @@ export type Phase = 'RUNNING' | 'PENDING' | 'DEGRADED' | 'FAILED' | 'STOPPED' | 
 
 export interface NodeStatus {
   node_id: string
-  statement_name: string
+  statement_name: string | null
   phase: Phase
   lagging: boolean
 }
