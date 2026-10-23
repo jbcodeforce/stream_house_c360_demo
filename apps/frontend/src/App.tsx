@@ -10,6 +10,13 @@ import TransactionsPage from './pages/TransactionsPage'
 import TransactionDetailPage from './pages/TransactionDetailPage'
 import TransactionFormPage from './pages/TransactionFormPage'
 import GeneratedTransactionsPage from './pages/GeneratedTransactionsPage'
+import DataProductsPage from './pages/DataProductsPage'
+
+// Placeholder for Task 8's StatementGraphPage; keeps the /data-products/:id route
+// compiling until Task 8 creates the real page and repoints this route.
+function StatementGraphPlaceholder() {
+  return <div className="status-msg">Statement graph coming soon…</div>
+}
 
 export default function App() {
   return (
@@ -28,6 +35,8 @@ export default function App() {
         <Route path="/transactions/new" element={<TransactionFormPage />} />
         <Route path="/transactions/generated" element={<GeneratedTransactionsPage />} />
         <Route path="/transactions/:id" element={<TransactionDetailPage />} />
+        <Route path="/data-products" element={<DataProductsPage />} />
+        <Route path="/data-products/:id" element={<StatementGraphPlaceholder />} />
       </Route>
     </Routes>
   )

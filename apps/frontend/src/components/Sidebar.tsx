@@ -1,10 +1,11 @@
-import { Users, Wallet, ArrowLeftRight } from 'lucide-react'
+import { Users, Wallet, ArrowLeftRight, Workflow } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 const links = [
   { to: '/customers', label: 'Customers', Icon: Users },
   { to: '/accounts', label: 'Accounts', Icon: Wallet },
   { to: '/transactions', label: 'Transactions', Icon: ArrowLeftRight },
+  { to: '/data-products', label: 'Data Products', Icon: Workflow },
 ]
 
 export default function Sidebar() {

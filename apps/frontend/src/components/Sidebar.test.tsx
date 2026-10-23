@@ -17,4 +17,16 @@ describe('Sidebar', () => {
       '/transactions',
     )
   })
+
+  it('renders a Data Products link pointing to /data-products', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('link', { name: /data products/i })).toHaveAttribute(
+      'href',
+      '/data-products',
+    )
+  })
 })
