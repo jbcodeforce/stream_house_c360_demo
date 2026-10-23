@@ -1,0 +1,31 @@
+{
+  "id": "c360",
+  "name": "Customer 360",
+  "description": "Customer 360 profile built from CDC sources via Flink.",
+  "nodes": [
+    { "id": "topic_customers", "type": "source", "label": "cdc.public.customers", "topic": "cdc.public.customers" },
+    { "id": "topic_accounts", "type": "source", "label": "cdc.public.accounts", "topic": "cdc.public.accounts" },
+    { "id": "topic_transactions", "type": "source", "label": "cdc.public.transactions", "topic": "cdc.public.transactions" },
+    { "id": "src_customers", "type": "statement", "label": "src_customers", "statement_name": "models-c360-sources-pipeline-src-customers", "topic": "src_customers" },
+    { "id": "src_accounts", "type": "statement", "label": "src_accounts", "statement_name": "models-c360-sources-pipeline-src-accounts", "topic": "src_accounts" },
+    { "id": "src_transactions", "type": "statement", "label": "src_transactions", "statement_name": "models-c360-sources-pipeline-src-transactions", "topic": "src_transactions" },
+    { "id": "dim_customers", "type": "statement", "label": "dim_customers", "statement_name": "models-c360-dimensions-pipeline-dim-customers", "topic": "dim_customers" },
+    { "id": "dim_transactions", "type": "statement", "label": "dim_transactions", "statement_name": "models-c360-dimensions-pipeline-dim-transactions", "topic": "dim_transactions" },
+    { "id": "dim_account_tx_agg", "type": "statement", "label": "dim_account_tx_agg", "statement_name": "models-c360-dimensions-pipeline-dim-account-tx-agg", "topic": "dim_account_tx_agg" },
+    { "id": "dim_tx_x_account", "type": "statement", "label": "dim_tx_x_account", "statement_name": "models-c360-dimensions-pipeline-dim-tx-x-account", "topic": "dim_tx_x_account" },
+    { "id": "fct_c360_profile", "type": "statement", "label": "fct_c360_profile", "statement_name": "models-c360-facts-pipeline-fct-c360-profile", "topic": "fct_c360_profile", "is_product": true }
+  ],
+  "edges": [
+    { "source": "topic_customers", "target": "src_customers" },
+    { "source": "topic_accounts", "target": "src_accounts" },
+    { "source": "topic_transactions", "target": "src_transactions" },
+    { "source": "src_customers", "target": "dim_customers" },
+    { "source": "src_transactions", "target": "dim_transactions" },
+    { "source": "src_accounts", "target": "dim_account_tx_agg" },
+    { "source": "dim_transactions", "target": "dim_account_tx_agg" },
+    { "source": "dim_customers", "target": "dim_tx_x_account" },
+    { "source": "dim_account_tx_agg", "target": "dim_tx_x_account" },
+    { "source": "dim_transactions", "target": "fct_c360_profile" },
+    { "source": "dim_customers", "target": "fct_c360_profile" }
+  ]
+}
