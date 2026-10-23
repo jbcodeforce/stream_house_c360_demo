@@ -55,9 +55,16 @@ function makeStatus({
   total: number
   lagging: number
 }): StatusResponse {
-  const statements = Array.from({ length: total }, (_, i) => ({
-    node_id: `stmt_${i}`,
-    statement_name: `stmt_${i}`,
+  // Key the first status to the graph's real statement node (dim_customers) so
+  // the integration test exercises a realistic status->node mapping, then pad to
+  // reach `total` for the rollup counts.
+  const ids = [
+    'dim_customers',
+    ...Array.from({ length: Math.max(0, total - 1) }, (_, i) => `stmt_${i}`),
+  ]
+  const statements = ids.map((node_id, i) => ({
+    node_id,
+    statement_name: node_id,
     phase: (i < running ? 'RUNNING' : 'FAILED') as StatusResponse['statements'][number]['phase'],
     lagging: i < lagging,
   }))

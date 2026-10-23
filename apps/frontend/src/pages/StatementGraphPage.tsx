@@ -60,6 +60,16 @@ export default function StatementGraphPage() {
     selectedIdRef.current = selectedId
   }, [selectedId])
 
+  // Guards against state updates after unmount (the page runs a 5s interval, so
+  // a getNodeMetrics call can still be in flight when the user navigates away).
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
   // Load the graph once, then compute static left-to-right positions.
   useEffect(() => {
     if (!id) return
@@ -93,12 +103,14 @@ export default function StatementGraphPage() {
       setMetricsLoading(true)
       getNodeMetrics(id, nodeId)
         .then((m) => {
-          if (selectedIdRef.current === nodeId) setMetrics(m)
+          if (mountedRef.current && selectedIdRef.current === nodeId) setMetrics(m)
         })
         .catch(() => {
           /* keep whatever metrics we last had; a transient failure is tolerated */
         })
-        .finally(() => setMetricsLoading(false))
+        .finally(() => {
+          if (mountedRef.current) setMetricsLoading(false)
+        })
     },
     [id],
   )
