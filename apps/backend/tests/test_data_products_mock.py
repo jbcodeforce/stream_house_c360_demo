@@ -32,6 +32,37 @@ def test_mock_metrics_has_full_fields():
     assert m.messages_in_per_sec is not None and m.sql is not None
 
 
+def test_mock_metrics_source_node_is_unknown_not_raising():
+    """SOURCE nodes (e.g. topic_customers) aren't in STATEMENT_FIXTURES —
+    get_metrics must degrade to UNKNOWN instead of raising KeyError, mirroring
+    LiveProvider's shape for a non-statement node."""
+    graph = descriptor.get_graph("c360")
+    m = providers.MockProvider(lagging=False).get_metrics(graph, "topic_customers")
+    assert m.node_id == "topic_customers" and m.phase == "UNKNOWN"
+    assert m.uptime_seconds is None
+    assert m.messages_in_per_sec is None
+    assert m.messages_out_per_sec is None
+    assert m.pending_records is None
+    assert m.compute_pool_cfu is None
+    assert m.sql is None
+
+
+def test_mock_and_live_agree_on_source_node_metrics_shape():
+    graph = descriptor.get_graph("c360")
+    mock_metrics = providers.MockProvider(lagging=False).get_metrics(graph, "topic_customers")
+
+    class _NeverCalledClient:
+        def list_statement_phases(self) -> dict[str, str]:
+            raise AssertionError("should not be called for a non-statement node")
+
+        def get_statement_metrics(self, statement_name: str) -> dict:
+            raise AssertionError("should not be called for a non-statement node")
+
+    live_metrics = providers.LiveProvider(client=_NeverCalledClient()).get_metrics(graph, "topic_customers")
+
+    assert mock_metrics.model_dump() == live_metrics.model_dump()
+
+
 def test_factory_selects_mock_lag(monkeypatch):
     monkeypatch.setenv("GRAPH_DATA_MODE", "mock-lag")
     import importlib; import config; importlib.reload(config)

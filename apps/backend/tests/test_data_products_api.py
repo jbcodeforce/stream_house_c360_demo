@@ -8,6 +8,7 @@ that reimport ``main`` afterwards start from a clean module graph.
 
 from __future__ import annotations
 
+import os
 import sys
 from unittest.mock import patch
 
@@ -72,6 +73,13 @@ def test_node_metrics(client):
     assert r.status_code == 200 and r.json()["phase"] == "RUNNING"
 
 
+def test_source_node_metrics_returns_200_unknown_not_500(client):
+    """topic_customers is a SOURCE node, absent from STATEMENT_FIXTURES.
+    Must degrade to UNKNOWN (200), never raise KeyError (500)."""
+    r = client.get("/api/v1/data-products/c360/nodes/topic_customers/metrics")
+    assert r.status_code == 200 and r.json()["phase"] == "UNKNOWN"
+
+
 def test_unknown_product_graph_404(client):
     assert client.get("/api/v1/data-products/nope/graph").status_code == 404
 
@@ -86,3 +94,55 @@ def test_unknown_node_metrics_404(client):
 
 def test_unknown_product_metrics_404(client):
     assert client.get("/api/v1/data-products/nope/nodes/src_customers/metrics").status_code == 404
+
+
+@pytest.fixture(scope="module")
+def live_client():
+    """Same wiring as ``client``, but GRAPH_DATA_MODE=live with NO Confluent
+    credentials configured — proves the live endpoint path degrades (never
+    5xx) when Confluent Cloud is unreachable/unconfigured.
+
+    ``ENV_CONFIG_FILE`` is pointed at a nonexistent path so a real repo
+    ``.env`` (which may carry real Flink/Confluent credentials for manual
+    testing) is never loaded here — this fixture must exercise the
+    no-credentials code path, not whatever happens to be on disk. The
+    FLINK_*/CONFLUENT_CLOUD_* keys are also deleted from the process
+    environment (if present) for the same reason.
+    """
+    env_patch = patch.dict("os.environ", {
+        "SINK": "kafka",
+        "GRAPH_DATA_MODE": "live",
+        "ENV_CONFIG_FILE": "/nonexistent/.env.test-no-creds",
+        "KAFKA_BOOTSTRAP_SERVERS": "mock:9092",
+        "SCHEMA_REGISTRY_URL": "http://mock-sr",
+        "SCHEMA_REGISTRY_API_KEY": "key",
+        "SCHEMA_REGISTRY_API_SECRET": "secret",
+    })
+    env_patch.start()
+    for key in (
+        "CONFLUENT_CLOUD_API_KEY", "CONFLUENT_CLOUD_API_SECRET",
+        "FLINK_API_KEY", "FLINK_API_SECRET", "FLINK_ORG_ID", "FLINK_ENV_ID",
+        "FLINK_COMPUTE_POOL_ID", "FLINK_REST_ENDPOINT",
+    ):
+        os.environ.pop(key, None)
+    _reset_modules()
+
+    with patch("customers.kafka_producer.produce_create"), \
+         patch("customers.kafka_producer.produce_update"):
+        import main  # noqa: PLC0415 — intentional late import after env patch
+        with TestClient(main.app) as test_client:
+            yield test_client
+
+    env_patch.stop()
+    _reset_modules()
+
+
+def test_live_mode_status_degrades_to_200(live_client):
+    r = live_client.get("/api/v1/data-products/c360/status")
+    assert r.status_code == 200
+    assert r.json()["rollup"]["total"] == 8
+
+
+def test_live_mode_node_metrics_degrades_to_200(live_client):
+    r = live_client.get("/api/v1/data-products/c360/nodes/src_customers/metrics")
+    assert r.status_code == 200

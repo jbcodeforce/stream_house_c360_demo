@@ -60,7 +60,13 @@ class MockProvider:
         return StatusResponse(statements=statements, rollup=rollup)
 
     def get_metrics(self, graph: Graph, node_id: str) -> NodeMetrics:
-        uptime, msg_in, msg_out, cfu, sql = mock_data.STATEMENT_FIXTURES[node_id]
+        fixture = mock_data.STATEMENT_FIXTURES.get(node_id)
+        if fixture is None:
+            # Non-statement node (e.g. a SOURCE topic) — mirror LiveProvider's
+            # behavior for the same case instead of raising KeyError.
+            return NodeMetrics(node_id=node_id, phase="UNKNOWN")
+
+        uptime, msg_in, msg_out, cfu, sql = fixture
         pending_records = (
             mock_data.LAGGING_PENDING_RECORDS if self._is_lagging(node_id) else 0
         )
