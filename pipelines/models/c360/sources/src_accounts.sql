@@ -12,7 +12,8 @@
         'scan.startup.mode': 'earliest-offset',
         'value.format': 'avro-registry'
     }
-) }}
+   ) 
+}}
 
 select 
     account_id,

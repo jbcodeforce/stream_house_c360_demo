@@ -19,6 +19,10 @@ Once the Confluent Cloud and AWS resources are created by Terraform, the user st
     ```sh
     source ./scripts/set_env_from_tf.sh
     ```
+* Set environment variables to the .env file
+    ```sh
+    export ENV_CONFIG_FILE=./apps/backend/.env
+    ```
 
 * Start the local webapp with remote database
     ```sh

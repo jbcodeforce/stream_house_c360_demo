@@ -36,6 +36,7 @@ _configure_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    settings.log_summary(logger)
     if settings.CDC_CONNECTOR_ENABLED:
         logger.info("[bypass] OFF — a CDC connector owns the cdc.public.* topics")
     elif settings.KAFKA_PRODUCE_ENABLED or settings.KAFKA_SEED_ON_START or settings.SINK == "kafka":

@@ -117,70 +117,30 @@ The Confluent Cloud Flink statement organization reflects the medaillon and star
 
 1. We can continue the data analysis and finally build the following Flink SQL to do some filtering and data cleaning. See [flink src processing folder](../flink_sqls/).
 
-1. To be able connect to Confluent Cloud, we need to set the environment variables for API keys and secrets
+1. To be able to connect to Confluent Cloud, we need to set the environment variables for API keys and secrets. The following script loads those from Terraform output
     ```sh
     source ./scripts/set_env_from_tf.sh
     ```
 
-1. `dbt` needs a model, declared within a yaml file, or when the source is already defined. This is the case for CDC topic. To get the schema from the raw topic we. can use a tool to automatically generate the `source.yaml` for dbt
-    ```sh
-    # under the project flink-tools-for-agents
-    uv run  sl-dbt get-schema-existing-topic-to-dbt ~/Code/stream_house_c360_demo/ cdc.public.customers
-    ```
+    As an alternate source the .env file under apps/backend/
 
-    The schema imported looks like:
+1. `dbt` needs models. The first layer is the references to existing CDC topics [see pipelines/models/sources.yaml](../pipelines/models/sources.yaml) file.
 
     ```yaml
-     tables:
-        - name: cdc.public.customers
-            description: Topic 'cdc.public.customers' — registered via sl-dbt get-schema-existing-topic-to-dbt.
-            columns:
-            - name: customer_id
-            data_type: string
-            - name: first_name
-            data_type: string
-            - name: last_name
-            data_type: string
-            - name: email
-            data_type: string
-            - name: phone
-            data_type: string
-            - name: date_of_birth
-            data_type: string
-            - name: gender
-            data_type: string
-            - name: address_line1
-            data_type: string
-            - name: address_line2
-            data_type: string
-            - name: city
-            data_type: string
-            - name: state
-            data_type: string
-            - name: postal_code
-            data_type: string
-            - name: country
-            data_type: string
-            - name: customer_since
-            data_type: int
-            - name: segment
-            data_type: string
-            - name: status
-            data_type: string
-            - name: created_at
-            data_type: string
-            - name: updated_at
-            data_type: string
-      ````
-
-      Do the same for accounts and transactions:
-      ```sh
-        # under the project flink-tools-for-agents
-        uv run  sl-dbt get-schema-existing-topic-to-dbt ~/Code/stream_house_c360_demo/ cdc.public.accounts
-
-
-        uv run  sl-dbt get-schema-existing-topic-to-dbt ~/Code/stream_house_c360_demo/ cdc.public.transactions
-      ```
+    version: 2
+    sources:
+    - name: cdc
+    schema: "{{ env_var('KAFKA_CLUSTER_NAME') }}"
+    tables:
+    - name: customers
+        identifier: cdc.public.customers
+    - name: accounts
+        identifier: cdc.public.accounts
+        description: accounts information for a customer    
+    - name: transactions
+        identifier: cdc.public.transactions
+        description: Topic 'cdc.public.transactions' — registered via sl-dbt get-schema-existing-topic-to-dbt.
+    ```
 
 1. Be sure to modify your `.dbt/profiles.yml` with the following element.
     ```yaml
@@ -207,6 +167,8 @@ The Confluent Cloud Flink statement organization reflects the medaillon and star
 
 1. Continue to create the following flink statements to filter and transform raw CDC topics, create dimension and fact for the analytics.
 
+The [path is pipelines/models/c360](../pipelines/models/c360)
+
 | Source Table(s) | Folder Name | Sink Table | Goal |
 | ----------------| ------------ |-----------|-----|
 | cdc.public.accounts | sources | src_accounts | Deduplicate, flatten, filter, transform |
@@ -216,6 +178,77 @@ The Confluent Cloud Flink statement organization reflects the medaillon and star
 | src_customers, src_account | dimension |  dim_customers| Compute transaction cross account metrics |
 | dim_customers, | facts | fct_c360_profiles |
 
+```sh
+├── c360
+│   ├── dimensions
+│   │   ├── dim_account_tx_agg.sql
+│   │   ├── dim_account_tx_agg.yml
+│   │   ├── dim_customers.sql
+│   │   ├── dim_customers.yml
+│   │   ├── dim_transactions.sql
+│   │   ├── dim_transactions.yml
+│   │   ├── dim_tx_x_account.sql
+│   │   └── dim_tx_x_account.yml
+│   ├── facts
+│   │   └── fct_c360_profile.sql
+│   └── sources
+│       ├── src_accounts.sql
+│       ├── src_accounts.yml
+│       ├── src_customers.sql
+│       ├── src_customers.yml
+│       ├── src_transactions.sql
+│       └── src_transactions.yml
+├── deploy_manifest.json
+└── sources.yaml
+```
+
+Each model needs to have the table definition to create as sink. As an example the dimension to compute account aggregations look like ([file dim_account_tx_agg.sq](../pipelines/models/c360/dimensions/dim_account_tx_agg.sql)):
+
+```yaml
+models:
+- name: dim_account_tx_agg
+  description: "Aggregates cross account"
+  config:
+    contract:
+      enforced: true
+  columns:
+  - name: account_id
+    data_type: varchar(2147483647)
+    constraints:
+      - type: not_null
+      - type: primary_key
+        expression: "not enforced"
+  - name: customer_id
+    data_type: string
+  - name: account_type
+    data_type: string
+  - name: account_status
+    data_type: string
+  - name: balance
+    data_type: DECIMAL
+  - name: txn_count
+    data_type: DECIMAL
+  - name: txn_total
+    data_type: DECIMAL
+  - name: last_transacted_at
+    data_type: timestamp_ltz
+```
+
+## Deploy
+
+dbt supports different way to manage the dependencies. We can use tag, folder, or tree.
+
+* Deploy all the sources that are the first level of flink statements to deploy
+```sh
+# within the pipelines folder:
+dbt run --select c360.sources --full-refresh
+```
+* Deploy the facts and its parents
+
+```sh
+# within the pipelines folder:
+
+```
 
 ## Undeploy
 

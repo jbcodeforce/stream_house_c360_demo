@@ -45,11 +45,11 @@
 #   LOCAL_PG_*       LOCAL_PG_USER / LOCAL_PG_PASSWORD / LOCAL_PG_HOST /
 #                    LOCAL_PG_PORT / LOCAL_PG_DB override the local DSN parts.
 #
-# Exported env vars take precedence over the backend dotenv file (pydantic-settings
-# reads real environment variables before the dotenv file), so this script's
-# DATABASE_URL / SINK always win — whatever the file happens to contain. The
-# dotenv path defaults to apps/backend/.env and can be changed by exporting
-# ENV_CONFIG_FILE.
+# Configuration file support:
+#   This script automatically reads and exports variables from the .env file
+#   specified by $ENV_CONFIG_FILE (or apps/backend/.env / .env if present),
+#   without overriding variables already set in your calling environment.
+#   CLI flags (--db, --db-url) and exported shell variables take precedence.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -74,11 +74,57 @@ dsn_target() {
   echo "$1" | sed -E 's#^[^@]*@##; s#\?.*$##'
 }
 
+# Load key-values from a .env file without overriding existing environment variables.
+load_dotenv() {
+  local env_file="$1"
+  [[ -f "$env_file" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    [[ -z "$line" || "$line" =~ ^# ]] && continue
+    line="${line#export }"
+    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+      local var_name="${BASH_REMATCH[1]}"
+      local var_value="${BASH_REMATCH[2]}"
+      if [[ "$var_value" =~ ^\"(.*)\"$ ]]; then
+        var_value="${BASH_REMATCH[1]}"
+      elif [[ "$var_value" =~ ^\'(.*)\'$ ]]; then
+        var_value="${BASH_REMATCH[1]}"
+      fi
+      if [[ -z "${!var_name+x}" ]]; then
+        export "$var_name"="$var_value"
+      fi
+    fi
+  done < "$env_file"
+}
+
 # Print the leading comment block (everything after the shebang up to the first
 # non-comment, non-blank line) as help — robust to edits that shift line numbers.
 usage() {
   awk 'NR==1 && /^#!/ {next} /^#/ {sub(/^# ?/,""); print; next} /^$/ {print; next} {exit}' "${BASH_SOURCE[0]}"
 }
+
+# ── Load environment file ───────────────────────────────────────────────────
+RESOLVED_ENV_FILE=""
+if [[ -n "${ENV_CONFIG_FILE:-}" ]]; then
+  if [[ -f "$ENV_CONFIG_FILE" ]]; then
+    RESOLVED_ENV_FILE="$ENV_CONFIG_FILE"
+  elif [[ -f "${REPO_ROOT}/${ENV_CONFIG_FILE}" ]]; then
+    RESOLVED_ENV_FILE="${REPO_ROOT}/${ENV_CONFIG_FILE}"
+  elif [[ -f "${BACKEND_DIR}/${ENV_CONFIG_FILE}" ]]; then
+    RESOLVED_ENV_FILE="${BACKEND_DIR}/${ENV_CONFIG_FILE}"
+  else
+    warn "ENV_CONFIG_FILE='$ENV_CONFIG_FILE' was specified but the file was not found."
+  fi
+elif [[ -f "${BACKEND_DIR}/.env" ]]; then
+  RESOLVED_ENV_FILE="${BACKEND_DIR}/.env"
+elif [[ -f "${REPO_ROOT}/.env" ]]; then
+  RESOLVED_ENV_FILE="${REPO_ROOT}/.env"
+fi
+
+if [[ -n "$RESOLVED_ENV_FILE" && -f "$RESOLVED_ENV_FILE" ]]; then
+  load_dotenv "$RESOLVED_ENV_FILE"
+  export ENV_CONFIG_FILE="$RESOLVED_ENV_FILE"
+fi
 
 # ── Argument parsing ────────────────────────────────────────────────────────
 DB_TARGET=""               # "" => auto-detect | local | rds | custom | env
@@ -207,21 +253,31 @@ fi
 
 VITE_API_BASE_URL="${VITE_API_BASE_URL:-http://localhost:${BACKEND_PORT}/api/v1}"
 
+# ── Export environment for child processes ──────────────────────────────────
+if [[ -n "${ENV_CONFIG_FILE:-}" ]]; then
+  export ENV_CONFIG_FILE
+fi
+export SINK
+export DATABASE_URL="$RESOLVED_DSN"
+export CDC_CONNECTOR_ENABLED
+export VITE_API_BASE_URL
+
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "─────────────────────────────────────────────────────────────"
 echo "  C360 dev stack"
 echo "─────────────────────────────────────────────────────────────"
-printf '  %-14s %s\n' "DATABASE:" "$DB_LABEL"
-printf '  %-14s %s\n' "DATABASE_URL:" "$(mask_dsn "$RESOLVED_DSN")"
-printf '  %-14s %s\n' "→ target:" "$(dsn_target "$RESOLVED_DSN")"
-printf '  %-14s %s\n' "SINK:" "$SINK"
-printf '  %-14s %s\n' "CDC conn.:" "$CDC_CONNECTOR_ENABLED  (true ⇒ app does NOT emit Kafka; connector owns cdc.public.*)"
+printf '  %-14s %s\n' "CONFIG FILE:" "${RESOLVED_ENV_FILE:-(none)}"
 $RUN_BACKEND  && printf '  %-14s %s\n' "BACKEND:"  "http://localhost:${BACKEND_PORT}  (docs: /docs)"
 $RUN_FRONTEND && printf '  %-14s %s\n' "FRONTEND:" "http://localhost:${FRONTEND_PORT}"
 $RUN_FRONTEND && printf '  %-14s %s\n' "API base:" "$VITE_API_BASE_URL"
 echo "─────────────────────────────────────────────────────────────"
 echo
+
+if $RUN_BACKEND; then
+  ( cd "$BACKEND_DIR" && uv run python -c "from config import settings; settings.log_summary()" )
+  echo
+fi
 
 if $CHECK_ONLY; then
   log "Configuration OK (--check): nothing started."
@@ -229,10 +285,6 @@ if $CHECK_ONLY; then
 fi
 
 # ── Launch ──────────────────────────────────────────────────────────────────
-export SINK
-export DATABASE_URL="$RESOLVED_DSN"
-export CDC_CONNECTOR_ENABLED
-export VITE_API_BASE_URL
 
 BACKEND_PID=""
 FRONTEND_PID=""

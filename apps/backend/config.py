@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from urllib.parse import urlparse
 
@@ -7,6 +8,40 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+
+
+def _resolve_env_file() -> str:
+    env_file = os.environ.get("ENV_CONFIG_FILE")
+    if env_file:
+        if os.path.isabs(env_file) or os.path.exists(env_file):
+            return env_file
+        backend_dir = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.abspath(os.path.join(backend_dir, "..", ".."))
+        for candidate in [
+            os.path.join(repo_root, env_file),
+            os.path.join(backend_dir, env_file),
+            os.path.abspath(env_file),
+        ]:
+            if os.path.exists(candidate):
+                return candidate
+        return env_file
+    backend_default = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    return backend_default if os.path.exists(backend_default) else ".env"
+
+
+def _mask_dsn(dsn: str | None) -> str:
+    if not dsn:
+        return "None"
+    try:
+        parsed = urlparse(dsn)
+        if parsed.password:
+            netloc = f"{parsed.username or ''}:****@{parsed.hostname or ''}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            return parsed._replace(netloc=netloc).geturl()
+        return dsn
+    except Exception:
+        return "****"
 
 
 def _host_owns_cdc(database_url: str | None) -> bool:
@@ -28,7 +63,7 @@ class Settings(BaseSettings):
     # The dotenv file path itself comes from the ENV_CONFIG_FILE env var
     # (default ".env"); real environment variables still take precedence.
     model_config = SettingsConfigDict(
-        env_file=os.environ.get("ENV_CONFIG_FILE", ".env"), extra="ignore"
+        env_file=_resolve_env_file(), extra="ignore"
     )
 
     SINK: str = "postgres"
@@ -86,6 +121,37 @@ class Settings(BaseSettings):
         if self.CDC_CONNECTOR_ENABLED is None:
             self.CDC_CONNECTOR_ENABLED = _host_owns_cdc(self.DATABASE_URL)
         return self
+
+    def summary(self) -> dict[str, str]:
+        """Return a dictionary of configuration key/values with secrets masked."""
+        env_file = _resolve_env_file()
+        exists = bool(env_file and os.path.exists(env_file))
+        raw_env = os.environ.get("ENV_CONFIG_FILE")
+        display_file = env_file if exists else (raw_env or env_file)
+        return {
+            "ENV_CONFIG_FILE": f"{display_file}" if exists else f"{display_file} (not found)",
+            "SINK": self.SINK,
+            "DATABASE_URL": _mask_dsn(self.DATABASE_URL),
+            "CDC_CONNECTOR_ENABLED": str(self.CDC_CONNECTOR_ENABLED),
+            "KAFKA_PRODUCE_ENABLED": str(self.KAFKA_PRODUCE_ENABLED),
+            "KAFKA_SEED_ON_START": str(self.KAFKA_SEED_ON_START),
+            "KAFKA_BOOTSTRAP_SERVERS": self.KAFKA_BOOTSTRAP_SERVERS or "None",
+            "SCHEMA_REGISTRY_URL": self.SCHEMA_REGISTRY_URL or "None",
+            "GRAPH_DATA_MODE": self.GRAPH_DATA_MODE,
+            "FLINK_REST_ENDPOINT": self.FLINK_REST_ENDPOINT or "None",
+        }
+
+    def log_summary(self, target_logger: logging.Logger | None = None) -> None:
+        """Log active configuration settings."""
+        if target_logger is None:
+            log = logging.getLogger("c360.config")
+            if not log.handlers and not logging.getLogger().handlers:
+                logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+        else:
+            log = target_logger
+        log.info("Active Backend Configuration:")
+        for k, v in self.summary().items():
+            log.info("  %-25s = %s", k, v)
 
 
 settings = Settings()

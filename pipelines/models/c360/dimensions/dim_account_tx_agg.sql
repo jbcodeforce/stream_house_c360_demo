@@ -25,7 +25,6 @@ SELECT
   COALESCE(t.txn_total, 0) AS txn_total,
   t.last_transacted_at
 FROM {{ ref('src_accounts') }} a
-WHERE account_type = 'CHECKING'
 LEFT JOIN (
   SELECT 
     account_id, 
@@ -36,3 +35,4 @@ LEFT JOIN (
   GROUP BY account_id
   ) t
 ON a.account_id = t.account_id
+WHERE a.account_type = 'CHECKING'

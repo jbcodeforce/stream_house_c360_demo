@@ -11,7 +11,10 @@
         'scan.bounded.mode': 'unbounded',
         'scan.startup.mode': 'earliest-offset',
         'value.format': 'avro-registry'
-    }
+    },
+    pre_hook=[
+        "ALTER TABLE {{ source('cdc', 'transactions') }} SET ( 'changelog.mode' = 'append')"
+    ]
 ) }}
 WITH relevant_tx AS (
     SELECT
@@ -26,8 +29,8 @@ WITH relevant_tx AS (
         merchant_category,
         `status`, 
         CAST(REPLACE(REPLACE(transacted_at, 'T', ' '), 'Z', '') AS TIMESTAMP_LTZ(6)) AS transacted_at
-    FROM TO_CHANGELOG(input => TABLE {{ source('cdc', 'transactions') }}, op => DESCRIPTOR(op))
-       WHERE op = 'c' and status <> 'CANCELLED'
+    FROM  {{ source('cdc', 'transactions') }}
+       WHERE status <> 'CANCELLED'
 )
 SELECT
   transaction_id, 
