@@ -11,21 +11,23 @@ unparseable payload is turned into empty/omitted data (``{}``) rather than
 raised. Callers can therefore always fall back to "UNKNOWN" phases / "None"
 metrics instead of breaking the page.
 
-NOTE (verify before real live use): the exact Flink SQL Statements API
-path/version
+The Metrics API query shape (host ``api.telemetry.confluent.cloud``, the
+``intervals``/``granularity``/``filter`` body, HTTP Basic auth) and the Flink
+metric descriptor names (``io.confluent.flink/pending_records``,
+``io.confluent.flink/compute_pool_utilization/current_cfus``) and filter
+fields (``resource.flink_statement.name``, ``resource.compute_pool.id``) are
+aligned with Confluent's Metrics API docs.
+
+NOTE (verify before real live use): the Flink SQL Statements API path/version
 (``{FLINK_REST_ENDPOINT}/sql/v1/organizations/{org}/environments/{env}/statements``)
-and the Confluent Cloud Metrics API descriptor names used below (e.g.
-``io.confluent.flink/pending_records``) are illustrative based on the
-general shape of these APIs — confirm the current path and descriptor names
-against Confluent's docs before pointing this at a real environment. None of
-this is test-critical: tests in ``tests/test_data_products_live.py`` mock at
-the client boundary (inject a fake object in place of ``ConfluentClient``),
-not at the HTTP layer.
+has not been exercised against a live environment yet — confirm it against
+Confluent's Flink REST API docs if statement phases come back empty.
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 import httpx
@@ -33,6 +35,11 @@ import httpx
 import config
 
 logger = logging.getLogger(__name__)
+
+# How far back to look for the most recent metric data point. Metrics can lag
+# a couple of minutes behind real time, so a short window (not just "the last
+# minute") makes a fresh point reliably available.
+_METRICS_LOOKBACK = timedelta(minutes=15)
 
 _REQUEST_TIMEOUT_SECONDS = 5.0
 # Confluent Cloud Metrics (Telemetry) API — query endpoint is
@@ -101,66 +108,114 @@ class ConfluentClient:
                 phases[name] = phase
         return phases
 
+    def _recent_interval(self) -> str:
+        """An absolute ISO-8601 interval covering the recent lookback window."""
+        end = datetime.now(timezone.utc)
+        start = end - _METRICS_LOOKBACK
+        fmt = "%Y-%m-%dT%H:%M:%SZ"
+        return f"{start.strftime(fmt)}/{end.strftime(fmt)}"
+
+    def _query_latest_value(
+        self,
+        metric: str,
+        filters: list[tuple[str, str]],
+        api_key: str,
+        api_secret: str,
+    ) -> float | None:
+        """POST a single-metric Metrics API query and return the most recent
+        data point's ``value`` (or ``None`` if there are no points).
+
+        Raises on network/HTTP/parse failure — callers isolate each query in
+        their own try/except so one failing metric doesn't drop the others.
+        """
+        if len(filters) == 1:
+            field, value = filters[0]
+            filter_obj: dict = {"field": field, "op": "EQ", "value": value}
+        else:
+            filter_obj = {
+                "op": "AND",
+                "filters": [{"field": f, "op": "EQ", "value": v} for f, v in filters],
+            }
+        body = {
+            "aggregations": [{"metric": metric}],
+            "filter": filter_obj,
+            "granularity": "PT1M",
+            "intervals": [self._recent_interval()],
+            "limit": 1000,
+        }
+        response = httpx.post(
+            _METRICS_API_BASE_URL,
+            json=body,
+            auth=(api_key, api_secret),
+            timeout=_REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        points = payload.get("data", []) if isinstance(payload, dict) else []
+        if not points:
+            return None
+        # Each point is {"timestamp": ISO8601, "value": <number>, ...group_by}.
+        latest = max(points, key=lambda p: p.get("timestamp", ""))
+        return latest.get("value")
+
     def get_statement_metrics(self, statement_name: str) -> dict:
         """Return raw metric fields for one statement; any key may be absent.
 
-        Recognized keys: ``pending_records``, ``messages_in_per_sec``,
-        ``messages_out_per_sec``, ``uptime_seconds``, ``compute_pool_cfu``.
-        Rate fields (``messages_in_per_sec``/``messages_out_per_sec``) need a
-        delta between two reads to compute — the Metrics API exposes
-        cumulative counters, not rates — so a single read here omits them
-        rather than guessing; a future iteration could cache the previous
-        read (per statement) to derive a rate.
+        Recognized keys: ``pending_records`` (statement-scoped lag) and
+        ``compute_pool_cfu`` (pool-scoped CFUs in use). These two live on
+        different resource dimensions, so they are two separately-scoped
+        queries, each isolated so one failing doesn't drop the other.
 
-        Returns ``{}`` if live credentials are not configured, or on any
-        network/HTTP/parsing failure.
+        ``messages_in_per_sec``/``messages_out_per_sec`` are intentionally not
+        populated here: the Metrics API exposes cumulative counters
+        (``num_records_in``/``_out``), so a rate needs a delta between two
+        reads — a future iteration can cache the previous read per statement.
+        ``uptime_seconds`` is derived from the statement, not a metric.
+
+        Returns ``{}`` if live credentials are not configured. Never raises.
         """
         s = self._settings
         if not (s.CONFLUENT_CLOUD_API_KEY and s.CONFLUENT_CLOUD_API_SECRET and s.FLINK_COMPUTE_POOL_ID):
             logger.info("ConfluentClient: Metrics API settings incomplete; skipping metrics lookup")
             return {}
 
-        body = {
-            "aggregations": [
-                {"metric": "io.confluent.flink/pending_records"},
-                {"metric": "io.confluent.flink/current_compute_pool_utilization"},
-            ],
-            "filter": {
-                "op": "AND",
-                "filters": [
-                    {"field": "resource.compute_pool.id", "op": "EQ", "value": s.FLINK_COMPUTE_POOL_ID},
-                    {"field": "resource.statement.name", "op": "EQ", "value": statement_name},
-                ],
-            },
-            "granularity": "PT1M",
-        }
+        metrics: dict = {}
+
+        # Statement-scoped: pending records (the lag / "messages behind" metric).
         try:
-            response = httpx.post(
-                _METRICS_API_BASE_URL,
-                json=body,
-                auth=(s.CONFLUENT_CLOUD_API_KEY, s.CONFLUENT_CLOUD_API_SECRET),
-                timeout=_REQUEST_TIMEOUT_SECONDS,
+            pending = self._query_latest_value(
+                "io.confluent.flink/pending_records",
+                [
+                    ("resource.compute_pool.id", s.FLINK_COMPUTE_POOL_ID),
+                    ("resource.flink_statement.name", statement_name),
+                ],
+                s.CONFLUENT_CLOUD_API_KEY,
+                s.CONFLUENT_CLOUD_API_SECRET,
             )
-            response.raise_for_status()
-            payload = response.json()
+            if pending is not None:
+                metrics["pending_records"] = int(pending)
         except (httpx.HTTPError, ValueError):
             logger.warning(
-                "ConfluentClient: get_statement_metrics failed for statement=%s",
+                "ConfluentClient: pending_records query failed for statement=%s",
                 statement_name,
                 exc_info=True,
             )
-            return {}
 
-        data_points = payload.get("data", []) if isinstance(payload, dict) else []
-        if not data_points:
-            return {}
-        point = data_points[0]
+        # Pool-scoped: current CFUs in use (a compute-pool metric, not per-statement).
+        try:
+            cfu = self._query_latest_value(
+                "io.confluent.flink/compute_pool_utilization/current_cfus",
+                [("resource.compute_pool.id", s.FLINK_COMPUTE_POOL_ID)],
+                s.CONFLUENT_CLOUD_API_KEY,
+                s.CONFLUENT_CLOUD_API_SECRET,
+            )
+            if cfu is not None:
+                metrics["compute_pool_cfu"] = cfu
+        except (httpx.HTTPError, ValueError):
+            logger.warning(
+                "ConfluentClient: compute pool CFU query failed for pool=%s",
+                s.FLINK_COMPUTE_POOL_ID,
+                exc_info=True,
+            )
 
-        metrics: dict = {}
-        if "pending_records" in point:
-            metrics["pending_records"] = point["pending_records"]
-        if "current_compute_pool_utilization" in point:
-            metrics["compute_pool_cfu"] = point["current_compute_pool_utilization"]
-        if "uptime_seconds" in point:
-            metrics["uptime_seconds"] = point["uptime_seconds"]
         return metrics

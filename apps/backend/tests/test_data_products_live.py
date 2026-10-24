@@ -113,12 +113,11 @@ def _settings(**overrides) -> types.SimpleNamespace:
     return types.SimpleNamespace(**base)
 
 
-def test_metrics_posts_to_telemetry_host_with_basic_auth(monkeypatch):
-    captured: dict = {}
+def test_metrics_query_body_matches_metrics_api_schema(monkeypatch):
+    calls: list[dict] = []
 
     def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002 - match httpx signature
-        captured["url"] = url
-        captured["auth"] = auth
+        calls.append({"url": url, "auth": auth, "body": json})
         return _Resp({"data": []})
 
     monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
@@ -126,10 +125,46 @@ def test_metrics_posts_to_telemetry_host_with_basic_auth(monkeypatch):
 
     client.get_statement_metrics("models-c360-sources-pipeline-src-customers")
 
-    # Regression guard: the Metrics API lives on the telemetry host, not api.confluent.cloud.
-    assert captured["url"] == "https://api.telemetry.confluent.cloud/v2/metrics/cloud/query"
-    # HTTP Basic with the Cloud API key/secret — not a bearer token.
-    assert captured["auth"] == ("ck", "cs")
+    # Two scoped queries: statement-level pending_records + pool-level CFUs.
+    assert len(calls) == 2
+    for call in calls:
+        # Regression guard: telemetry host, not api.confluent.cloud; HTTP Basic (not bearer).
+        assert call["url"] == "https://api.telemetry.confluent.cloud/v2/metrics/cloud/query"
+        assert call["auth"] == ("ck", "cs")
+        body = call["body"]
+        # 422 regression guard: intervals is required and must be present/non-empty.
+        assert body["intervals"] and "/" in body["intervals"][0]
+        assert body["granularity"] == "PT1M"
+
+    bodies_by_metric = {c["body"]["aggregations"][0]["metric"]: c["body"] for c in calls}
+    assert "io.confluent.flink/pending_records" in bodies_by_metric
+    assert "io.confluent.flink/compute_pool_utilization/current_cfus" in bodies_by_metric
+
+    # pending_records must be scoped to the statement via the correct filter field.
+    pending_body = bodies_by_metric["io.confluent.flink/pending_records"]
+    filter_fields = {f["field"]: f["value"] for f in pending_body["filter"]["filters"]}
+    assert filter_fields["resource.flink_statement.name"] == "models-c360-sources-pipeline-src-customers"
+    assert filter_fields["resource.compute_pool.id"] == "lfcp-x"
+
+
+def test_metrics_parses_latest_data_point_value(monkeypatch):
+    def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002
+        metric = json["aggregations"][0]["metric"]
+        if metric == "io.confluent.flink/pending_records":
+            return _Resp({"data": [
+                {"timestamp": "2026-10-24T10:00:00Z", "value": 10},
+                {"timestamp": "2026-10-24T10:05:00Z", "value": 4200},  # latest
+            ]})
+        return _Resp({"data": [{"timestamp": "2026-10-24T10:05:00Z", "value": 2.0}]})
+
+    monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    metrics = client.get_statement_metrics("models-c360-sources-pipeline-src-transactions")
+
+    # Reads `value` from the most recent point (not a key named after the metric).
+    assert metrics["pending_records"] == 4200
+    assert metrics["compute_pool_cfu"] == 2.0
 
 
 def test_statement_phases_uses_flink_endpoint_with_basic_auth(monkeypatch):
