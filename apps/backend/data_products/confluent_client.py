@@ -35,7 +35,12 @@ import config
 logger = logging.getLogger(__name__)
 
 _REQUEST_TIMEOUT_SECONDS = 5.0
-_METRICS_API_BASE_URL = "https://api.confluent.cloud/v2/metrics/cloud/query"
+# Confluent Cloud Metrics (Telemetry) API — query endpoint is
+# {host}/v2/metrics/{dataset}/{query-type}; for Cloud resources the dataset
+# is "cloud" and the query type is "query". The API authenticates with a
+# Cloud API key/secret via HTTP Basic auth (passed as auth=(key, secret)
+# below), NOT a bearer token.
+_METRICS_API_BASE_URL = "https://api.telemetry.confluent.cloud/v2/metrics/cloud/query"
 
 
 class ConfluentClientProtocol(Protocol):
