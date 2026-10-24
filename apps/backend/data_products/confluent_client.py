@@ -41,6 +41,20 @@ logger = logging.getLogger(__name__)
 # minute") makes a fresh point reliably available.
 _METRICS_LOOKBACK = timedelta(minutes=15)
 
+
+def _is_auth_error(exc: Exception) -> bool:
+    """True for a 401/403 HTTP response — an auth/authorization failure."""
+    return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403)
+
+
+_METRICS_AUTH_HINT = (
+    "ConfluentClient: Metrics API returned %s for %s — the Cloud API key's "
+    "principal is likely missing the MetricsViewer role. Use a Cloud API key "
+    "(resource scope 'cloud') whose service account/user has MetricsViewer "
+    "(confluent iam rbac role-binding create --role MetricsViewer). "
+    "Changing the key alone won't help; 403 means authenticated-but-not-authorized."
+)
+
 _REQUEST_TIMEOUT_SECONDS = 5.0
 # Confluent Cloud Metrics (Telemetry) API — query endpoint is
 # {host}/v2/metrics/{dataset}/{query-type}; for Cloud resources the dataset
@@ -194,12 +208,15 @@ class ConfluentClient:
             )
             if pending is not None:
                 metrics["pending_records"] = int(pending)
-        except (httpx.HTTPError, ValueError):
-            logger.warning(
-                "ConfluentClient: pending_records query failed for statement=%s",
-                statement_name,
-                exc_info=True,
-            )
+        except (httpx.HTTPError, ValueError) as exc:
+            if _is_auth_error(exc):
+                logger.warning(_METRICS_AUTH_HINT, exc.response.status_code, f"statement={statement_name}")
+            else:
+                logger.warning(
+                    "ConfluentClient: pending_records query failed for statement=%s",
+                    statement_name,
+                    exc_info=True,
+                )
 
         # Pool-scoped: current CFUs in use (a compute-pool metric, not per-statement).
         try:
@@ -211,11 +228,14 @@ class ConfluentClient:
             )
             if cfu is not None:
                 metrics["compute_pool_cfu"] = cfu
-        except (httpx.HTTPError, ValueError):
-            logger.warning(
-                "ConfluentClient: compute pool CFU query failed for pool=%s",
-                s.FLINK_COMPUTE_POOL_ID,
-                exc_info=True,
-            )
+        except (httpx.HTTPError, ValueError) as exc:
+            if _is_auth_error(exc):
+                logger.warning(_METRICS_AUTH_HINT, exc.response.status_code, f"pool={s.FLINK_COMPUTE_POOL_ID}")
+            else:
+                logger.warning(
+                    "ConfluentClient: compute pool CFU query failed for pool=%s",
+                    s.FLINK_COMPUTE_POOL_ID,
+                    exc_info=True,
+                )
 
         return metrics

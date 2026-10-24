@@ -167,6 +167,22 @@ def test_metrics_parses_latest_data_point_value(monkeypatch):
     assert metrics["compute_pool_cfu"] == 2.0
 
 
+def test_metrics_forbidden_is_swallowed(monkeypatch):
+    # A 403 (missing MetricsViewer role) must degrade to empty metrics, never raise.
+    req = httpx.Request("POST", confluent_client._METRICS_API_BASE_URL)
+    resp = httpx.Response(403, request=req)
+
+    def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002
+        raise httpx.HTTPStatusError("forbidden", request=req, response=resp)
+
+    monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    metrics = client.get_statement_metrics("models-c360-sources-pipeline-src-customers")
+
+    assert metrics == {}
+
+
 def test_statement_phases_uses_flink_endpoint_with_basic_auth(monkeypatch):
     captured: dict = {}
 
