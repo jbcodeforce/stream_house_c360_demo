@@ -21,9 +21,10 @@ The Metrics API query shape (host ``api.telemetry.confluent.cloud``, the
 key whose principal has the MetricsViewer role) and the Flink metric descriptor
 names (``io.confluent.flink/pending_records``,
 ``io.confluent.flink/materialized_table_utilization/current_cfus``) are aligned
-with Confluent's docs. See ``_MT_NAME_DIMENSION`` for the one filter-field
-spelling that is a best-effort guess (a 422 body, now logged, names the
-correct field if it is wrong).
+with Confluent's docs. Materialized-table metrics are scoped by the MT's UID
+(``_MT_UID_DIMENSION``), the canonical resource id — a ``.name`` filter fails
+the Metrics API's authorized-resource check (403). The UID is read from the
+materialized-tables list (``metadata.uid``).
 
 NOTE (verify before real live use): the Flink SQL Statements and
 Materialized-Tables API paths/versions (``.../sql/v1/organizations/{org}/
@@ -58,7 +59,7 @@ _AUTH_ERROR_HINT = (
     " | 403/401 cause is in the body above: either the Cloud API key's principal "
     "lacks the MetricsViewer role (confluent iam rbac role-binding create --role "
     "MetricsViewer), or the query isn't scoped to an authorized resource (often a "
-    "wrong/unrecognized filter dimension — see _MT_NAME_DIMENSION)."
+    "wrong/unrecognized filter dimension — see _MT_UID_DIMENSION)."
 )
 
 
@@ -84,15 +85,14 @@ _REQUEST_TIMEOUT_SECONDS = 5.0
 _METRICS_API_BASE_URL = "https://api.telemetry.confluent.cloud/v2/metrics/cloud/query"
 
 
-# Metrics API filter field (dimension) that scopes a query to one
-# materialized table by name. The MT utilization metrics are published with
-# materialized-table dimensions (name / UID / version), not the compute-pool
-# or flink_statement dimensions. BEST-EFFORT: this exact field spelling is not
-# in the prose docs; it follows Confluent's `resource.<entity>.<attr>`
-# convention (cf. the confirmed `resource.flink_statement.name`). If CFU shows
-# "—" in live mode, the Metrics API 422 body (now logged) names the correct
-# field — update this one constant.
-_MT_NAME_DIMENSION = "resource.flink_materialized_table.name"
+# Metrics API filter field (dimension) that scopes a query to one materialized
+# table. The MT utilization metrics carry the resource type
+# `flink_materialized_table`, whose filterable labels are .name / .uid /
+# .version (confirmed via the Metrics API resource descriptors). Authorization
+# is keyed on the canonical resource id, so the query must filter by .uid — a
+# .name filter fails the "must filter by an authorized resource" check (403).
+# The uid comes from the materialized-tables list (metadata.uid).
+_MT_UID_DIMENSION = "resource.flink_materialized_table.uid"
 
 
 class ConfluentClientProtocol(Protocol):
@@ -102,11 +102,11 @@ class ConfluentClientProtocol(Protocol):
 
     def list_statement_phases(self) -> dict[str, str]: ...
 
-    def list_materialized_table_phases(self) -> dict[str, str]: ...
+    def list_materialized_tables(self) -> dict[str, dict]: ...
 
     def get_statement_metrics(self, statement_name: str) -> dict: ...
 
-    def get_materialized_table_metrics(self, mt_name: str) -> dict: ...
+    def get_materialized_table_metrics(self, mt_uid: str) -> dict: ...
 
 
 class ConfluentClient:
@@ -157,13 +157,15 @@ class ConfluentClient:
                 phases[name] = phase
         return phases
 
-    def list_materialized_table_phases(self) -> dict[str, str]:
-        """Return ``{materialized_table_name: phase}`` for every materialized table.
+    def list_materialized_tables(self) -> dict[str, dict]:
+        """Return ``{name: {"phase", "uid", "version"}}`` for every materialized table.
 
         Materialized tables are maintained by a hidden system statement, so they
         do NOT appear in the Flink Statements list — this dedicated API is their
         source of truth. Keyed by the table ``name`` (e.g. ``src_customers``),
-        which matches the graph node's label/id, not the dbt statement name.
+        which matches the graph node's label/id, not the dbt statement name. The
+        ``uid`` (metadata.uid) is the canonical resource id used to scope the
+        Metrics API query (see ``get_materialized_table_metrics``).
 
         Returns ``{}`` if live credentials are not configured, or on any
         network/HTTP/parsing failure.
@@ -186,16 +188,21 @@ class ConfluentClient:
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError):
-            logger.warning("ConfluentClient: list_materialized_table_phases failed", exc_info=True)
+            logger.warning("ConfluentClient: list_materialized_tables failed", exc_info=True)
             return {}
 
-        phases: dict[str, str] = {}
+        tables: dict[str, dict] = {}
         for item in payload.get("data", []) if isinstance(payload, dict) else []:
             name = item.get("name")
-            phase = (item.get("status") or {}).get("phase")
-            if name and phase:
-                phases[name] = phase
-        return phases
+            if not name:
+                continue
+            status = item.get("status") or {}
+            tables[name] = {
+                "phase": status.get("phase"),
+                "uid": (item.get("metadata") or {}).get("uid"),
+                "version": status.get("version"),
+            }
+        return tables
 
     def _recent_interval(self) -> str:
         """An absolute ISO-8601 interval covering the recent lookback window."""
@@ -301,33 +308,36 @@ class ConfluentClient:
 
         return metrics
 
-    def get_materialized_table_metrics(self, mt_name: str) -> dict:
+    def get_materialized_table_metrics(self, mt_uid: str) -> dict:
         """Return raw metric fields for one materialized table; keys may be absent.
 
-        Materialized tables bill on their own CFU utilization metrics (scoped by
-        the materialized-table name dimension), distinct from the per-statement /
-        compute-pool metrics — the compute-pool view mixes statement and MT
-        usage, so it is not used here. Recognized key: ``compute_pool_cfu``
-        (current CFUs the materialized table is consuming).
+        Materialized tables bill on their own CFU utilization metrics, scoped by
+        the materialized-table UID (the canonical resource id — a .name filter
+        fails the Metrics API's authorized-resource check). The compute-pool view
+        mixes statement and MT usage, so it is not used here. Recognized key:
+        ``compute_pool_cfu`` (current CFUs the materialized table is consuming).
 
-        Returns ``{}`` if live credentials are not configured. Never raises.
+        Returns ``{}`` if live credentials are not configured, or if ``mt_uid``
+        is empty. Never raises.
         """
         s = self._settings
         if not (s.CONFLUENT_CLOUD_API_KEY and s.CONFLUENT_CLOUD_API_SECRET):
             logger.info("ConfluentClient: Metrics API settings incomplete; skipping MT metrics lookup")
+            return {}
+        if not mt_uid:
             return {}
 
         metrics: dict = {}
         try:
             cfu = self._query_latest_value(
                 "io.confluent.flink/materialized_table_utilization/current_cfus",
-                [(_MT_NAME_DIMENSION, mt_name)],
+                [(_MT_UID_DIMENSION, mt_uid)],
                 s.CONFLUENT_CLOUD_API_KEY,
                 s.CONFLUENT_CLOUD_API_SECRET,
             )
             if cfu is not None:
                 metrics["compute_pool_cfu"] = cfu
         except (httpx.HTTPError, ValueError) as exc:
-            _log_metrics_error(exc, f"materialized_table={mt_name}")
+            _log_metrics_error(exc, f"materialized_table_uid={mt_uid}")
 
         return metrics

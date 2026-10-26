@@ -93,42 +93,32 @@ class LiveProvider:
     def __init__(self, client: ConfluentClientProtocol | None = None) -> None:
         self._client: ConfluentClientProtocol = client if client is not None else ConfluentClient()
 
-    def _safe_phases(self) -> dict[str, str]:
-        """Merge regular-statement phases with materialized-table phases.
-
-        The c360 pipeline is built from materialized tables, which are kept by a
-        hidden system statement and so do NOT appear in the Statements list —
-        their phases come from the dedicated materialized-tables API, keyed by
-        table name. Regular statements are keyed by statement name. The two key
-        spaces are distinct, so one merged dict lets each node resolve its phase
-        by whichever identifier it carries. Each lookup is isolated so one
-        failing source never drops the other.
-        """
-        phases: dict[str, str] = {}
+    def _safe_statement_phases(self) -> dict[str, str]:
         try:
-            phases.update(self._client.list_statement_phases())
+            return self._client.list_statement_phases()
         except Exception:  # noqa: BLE001 — best-effort: never let this surface
             logger.warning("LiveProvider: list_statement_phases failed; reporting UNKNOWN", exc_info=True)
-        try:
-            phases.update(self._client.list_materialized_table_phases())
-        except Exception:  # noqa: BLE001 — best-effort: never let this surface
-            logger.warning("LiveProvider: list_materialized_table_phases failed; reporting UNKNOWN", exc_info=True)
-        return phases
+            return {}
 
-    def _safe_metrics(self, node) -> dict:
-        """Metrics for one node: materialized-table CFU (by table name) merged
-        with any per-statement metrics (by statement name). Each call isolated."""
-        metrics: dict = {}
+    def _safe_materialized_tables(self) -> dict[str, dict]:
+        """``{name: {"phase", "uid", "version"}}`` — the source of truth for the
+        c360 nodes, which are materialized tables (not in the Statements list)."""
         try:
-            metrics.update(self._client.get_materialized_table_metrics(node.id))
+            return self._client.list_materialized_tables()
         except Exception:  # noqa: BLE001 — best-effort: never let this surface
-            logger.warning("LiveProvider: get_materialized_table_metrics failed for %s", node.id, exc_info=True)
-        if node.statement_name:
-            try:
-                metrics.update(self._client.get_statement_metrics(node.statement_name))
-            except Exception:  # noqa: BLE001 — best-effort: never let this surface
-                logger.warning("LiveProvider: get_statement_metrics failed for %s", node.statement_name, exc_info=True)
-        return metrics
+            logger.warning("LiveProvider: list_materialized_tables failed; reporting UNKNOWN", exc_info=True)
+            return {}
+
+    @staticmethod
+    def _merged_phases(statement_phases: dict[str, str], mt_tables: dict[str, dict]) -> dict[str, str]:
+        """One phase lookup keyed by both statement names and MT table names.
+        The two key spaces are distinct, so a node can resolve its phase by
+        whichever identifier the backend keyed it under."""
+        phases = dict(statement_phases)
+        for name, info in mt_tables.items():
+            if info.get("phase"):
+                phases[name] = info["phase"]
+        return phases
 
     @staticmethod
     def _normalize_phase(phase: str | None) -> str:
@@ -136,15 +126,37 @@ class LiveProvider:
 
     @classmethod
     def _phase_for(cls, node, phases: dict[str, str]) -> str:
-        """Resolve a node's phase by whichever identifier the backend keyed it
-        under — materialized-table name (id/label) first, then statement name."""
         for key in (node.id, node.label, node.statement_name):
             if key and key in phases:
                 return cls._normalize_phase(phases[key])
         return "UNKNOWN"
 
+    @staticmethod
+    def _mt_uid_for(node, mt_tables: dict[str, dict]) -> str | None:
+        """The materialized table's UID (canonical resource id for the Metrics
+        API), matched by table name = node id/label."""
+        for key in (node.id, node.label):
+            info = mt_tables.get(key)
+            if info and info.get("uid"):
+                return info["uid"]
+        return None
+
+    def _safe_mt_metrics(self, uid: str) -> dict:
+        try:
+            return self._client.get_materialized_table_metrics(uid)
+        except Exception:  # noqa: BLE001 — best-effort: never let this surface
+            logger.warning("LiveProvider: get_materialized_table_metrics failed for uid=%s", uid, exc_info=True)
+            return {}
+
+    def _safe_statement_metrics(self, statement_name: str) -> dict:
+        try:
+            return self._client.get_statement_metrics(statement_name)
+        except Exception:  # noqa: BLE001 — best-effort: never let this surface
+            logger.warning("LiveProvider: get_statement_metrics failed for %s", statement_name, exc_info=True)
+            return {}
+
     def get_status(self, graph: Graph) -> StatusResponse:
-        phases = self._safe_phases()
+        phases = self._merged_phases(self._safe_statement_phases(), self._safe_materialized_tables())
         statements = []
         for node in graph.nodes:
             if node.type != "statement":
@@ -174,8 +186,17 @@ class LiveProvider:
         if node is None or node.type != "statement":
             return NodeMetrics(node_id=node_id, phase="UNKNOWN")
 
-        phases = self._safe_phases()
-        raw = self._safe_metrics(node)
+        statement_phases = self._safe_statement_phases()
+        mt_tables = self._safe_materialized_tables()
+        phases = self._merged_phases(statement_phases, mt_tables)
+
+        raw: dict = {}
+        uid = self._mt_uid_for(node, mt_tables)
+        if uid:
+            raw.update(self._safe_mt_metrics(uid))
+        if node.statement_name:
+            raw.update(self._safe_statement_metrics(node.statement_name))
+
         return NodeMetrics(
             node_id=node_id,
             phase=self._phase_for(node, phases),
