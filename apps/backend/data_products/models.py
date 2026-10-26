@@ -12,6 +12,13 @@ class GraphNode(BaseModel):
     statement_name: str | None = None
     topic: str | None = None
     is_product: bool = False
+    # How this node's live metrics are scoped. Values mirror the dbt
+    # `materialized` config exactly. "materialized_table" is kept by a hidden
+    # system statement (not in the Statements list), so its metrics are scoped
+    # by the MT UID discovered via the REST API; "streaming_table" is a regular
+    # statement scoped by statement_name. Only set on statement nodes; source
+    # topics leave it None. Absent/None is treated as materialized_table.
+    table_type: Literal["materialized_table", "streaming_table"] | None = None
 
 
 class GraphEdge(BaseModel):

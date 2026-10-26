@@ -13,6 +13,7 @@ import types
 import httpx
 
 from data_products import confluent_client, descriptor, providers
+from data_products.models import Graph, GraphNode
 
 
 class _FakeClient:
@@ -76,11 +77,15 @@ def _raising_client(exc: Exception) -> _RaisingClient:
 
 
 def test_live_status_maps_phases():
+    # Key the fake Statements API by the nodes' real statement_name (read from
+    # the descriptor) so this survives descriptor regeneration.
+    graph = descriptor.get_graph("c360")
+    sn = {n.id: n.statement_name for n in graph.nodes}
     client = _fake_client(phases={
-        "models-c360-sources-pipeline-src-customers": "RUNNING",
-        "models-c360-facts-pipeline-fct-c360-profile": "FAILED",
+        sn["src_customers"]: "RUNNING",
+        sn["fct_c360_profile"]: "FAILED",
     })
-    status = providers.LiveProvider(client=client).get_status(descriptor.get_graph("c360"))
+    status = providers.LiveProvider(client=client).get_status(graph)
     byid = {s.node_id: s.phase for s in status.statements}
     assert byid["src_customers"] == "RUNNING" and byid["fct_c360_profile"] == "FAILED"
 
@@ -93,9 +98,14 @@ def test_live_unknown_phase_becomes_UNKNOWN():
 
 
 def test_live_missing_metric_is_none():
-    client = _fake_client(metrics={"pending_records": 5})  # no rate fields
+    # src_customers is a materialized table, so metrics come from the MT path;
+    # fields the MT API doesn't return (the rate counters) stay None.
+    client = _fake_client(
+        mt_tables={"src_customers": {"phase": "RUNNING", "uid": "mt-1"}},
+        mt_metrics={"compute_pool_cfu": 3.0},  # no rate fields
+    )
     m = providers.LiveProvider(client=client).get_metrics(descriptor.get_graph("c360"), "src_customers")
-    assert m.pending_records == 5 and m.messages_in_per_sec is None
+    assert m.compute_pool_cfu == 3.0 and m.messages_in_per_sec is None
 
 
 def test_live_unreachable_does_not_raise():
@@ -124,6 +134,46 @@ def test_live_mt_metrics_populate_cfu():
     )
     m = providers.LiveProvider(client=client).get_metrics(descriptor.get_graph("c360"), "src_customers")
     assert m.phase == "RUNNING" and m.compute_pool_cfu == 3.0
+
+
+def _mixed_graph() -> Graph:
+    """One materialized node and one streaming node, so metrics routing can be
+    asserted per table_type (the c360 descriptor is all-materialized)."""
+    return Graph(
+        nodes=[
+            GraphNode(id="mt_node", type="statement", label="mt_node",
+                      statement_name="stmt-mt", topic="mt_node", table_type="materialized_table"),
+            GraphNode(id="stream_node", type="statement", label="stream_node",
+                      statement_name="stmt-stream", topic="stream_node", table_type="streaming_table"),
+        ],
+        edges=[],
+    )
+
+
+def test_live_materialized_node_metrics_use_mt_uid_not_statement():
+    # A materialized table's metrics come only from the MT path (UID-scoped).
+    # The statement path is never consulted, so its pending_records is ignored.
+    client = _fake_client(
+        metrics={"pending_records": 5},  # statement path — must be ignored
+        mt_tables={"mt_node": {"phase": "RUNNING", "uid": "mt-1"}},
+        mt_metrics={"compute_pool_cfu": 3.0},  # MT path — used
+    )
+    m = providers.LiveProvider(client=client).get_metrics(_mixed_graph(), "mt_node")
+    assert m.compute_pool_cfu == 3.0
+    assert m.pending_records is None
+
+
+def test_live_streaming_node_metrics_use_statement_name_not_mt():
+    # A streaming table's metrics come only from the statement path (name-scoped).
+    # The MT path is never consulted, even though an MT entry happens to match.
+    client = _fake_client(
+        metrics={"pending_records": 7, "compute_pool_cfu": 2.0},  # statement path — used
+        mt_tables={"stream_node": {"phase": "RUNNING", "uid": "mt-9"}},
+        mt_metrics={"compute_pool_cfu": 99.0},  # MT path — must be ignored
+    )
+    m = providers.LiveProvider(client=client).get_metrics(_mixed_graph(), "stream_node")
+    assert m.pending_records == 7
+    assert m.compute_pool_cfu == 2.0  # statement path, not the MT's 99.0
 
 
 # --- real-ConfluentClient HTTP-layer tests (httpx mocked, no network) ---

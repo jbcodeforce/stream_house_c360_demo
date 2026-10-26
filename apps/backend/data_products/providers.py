@@ -190,12 +190,22 @@ class LiveProvider:
         mt_tables = self._safe_materialized_tables()
         phases = self._merged_phases(statement_phases, mt_tables)
 
+        # Metrics are scoped differently per table_type (mirrors the dbt
+        # `materialized` config): a streaming_table is a regular statement,
+        # scoped by statement name; a materialized_table is a hidden statement,
+        # scoped by its MT UID (found via the materialized-tables REST API).
+        # Query only the matching path — the other one's identifier doesn't
+        # resolve for this kind of table. table_type is None for legacy/unset
+        # nodes; treat that as materialized_table, the historical default for
+        # the all-MT c360 pipeline.
         raw: dict = {}
-        uid = self._mt_uid_for(node, mt_tables)
-        if uid:
-            raw.update(self._safe_mt_metrics(uid))
-        if node.statement_name:
-            raw.update(self._safe_statement_metrics(node.statement_name))
+        if node.table_type == "streaming_table":
+            if node.statement_name:
+                raw.update(self._safe_statement_metrics(node.statement_name))
+        else:
+            uid = self._mt_uid_for(node, mt_tables)
+            if uid:
+                raw.update(self._safe_mt_metrics(uid))
 
         return NodeMetrics(
             node_id=node_id,
