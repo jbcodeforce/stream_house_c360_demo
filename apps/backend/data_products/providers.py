@@ -20,11 +20,6 @@ logger = logging.getLogger(__name__)
 
 _VALID_PHASES = frozenset({"RUNNING", "PENDING", "DEGRADED", "FAILED", "STOPPED", "UNKNOWN"})
 
-# Pending-records count above which a statement is reported as "lagging".
-# Not test-critical / not tied to any SLA — a reasonable default that can be
-# tuned once real backlog volumes are observed in live mode.
-_LAG_THRESHOLD_PENDING_RECORDS = 1_000
-
 
 class StatusProvider(Protocol):
     def get_status(self, graph: Graph) -> StatusResponse: ...
@@ -99,22 +94,54 @@ class LiveProvider:
         self._client: ConfluentClientProtocol = client if client is not None else ConfluentClient()
 
     def _safe_phases(self) -> dict[str, str]:
+        """Merge regular-statement phases with materialized-table phases.
+
+        The c360 pipeline is built from materialized tables, which are kept by a
+        hidden system statement and so do NOT appear in the Statements list —
+        their phases come from the dedicated materialized-tables API, keyed by
+        table name. Regular statements are keyed by statement name. The two key
+        spaces are distinct, so one merged dict lets each node resolve its phase
+        by whichever identifier it carries. Each lookup is isolated so one
+        failing source never drops the other.
+        """
+        phases: dict[str, str] = {}
         try:
-            return self._client.list_statement_phases()
+            phases.update(self._client.list_statement_phases())
         except Exception:  # noqa: BLE001 — best-effort: never let this surface
             logger.warning("LiveProvider: list_statement_phases failed; reporting UNKNOWN", exc_info=True)
-            return {}
-
-    def _safe_metrics(self, statement_name: str) -> dict:
         try:
-            return self._client.get_statement_metrics(statement_name)
+            phases.update(self._client.list_materialized_table_phases())
         except Exception:  # noqa: BLE001 — best-effort: never let this surface
-            logger.warning("LiveProvider: get_statement_metrics failed for %s", statement_name, exc_info=True)
-            return {}
+            logger.warning("LiveProvider: list_materialized_table_phases failed; reporting UNKNOWN", exc_info=True)
+        return phases
+
+    def _safe_metrics(self, node) -> dict:
+        """Metrics for one node: materialized-table CFU (by table name) merged
+        with any per-statement metrics (by statement name). Each call isolated."""
+        metrics: dict = {}
+        try:
+            metrics.update(self._client.get_materialized_table_metrics(node.id))
+        except Exception:  # noqa: BLE001 — best-effort: never let this surface
+            logger.warning("LiveProvider: get_materialized_table_metrics failed for %s", node.id, exc_info=True)
+        if node.statement_name:
+            try:
+                metrics.update(self._client.get_statement_metrics(node.statement_name))
+            except Exception:  # noqa: BLE001 — best-effort: never let this surface
+                logger.warning("LiveProvider: get_statement_metrics failed for %s", node.statement_name, exc_info=True)
+        return metrics
 
     @staticmethod
     def _normalize_phase(phase: str | None) -> str:
         return phase if phase in _VALID_PHASES else "UNKNOWN"
+
+    @classmethod
+    def _phase_for(cls, node, phases: dict[str, str]) -> str:
+        """Resolve a node's phase by whichever identifier the backend keyed it
+        under — materialized-table name (id/label) first, then statement name."""
+        for key in (node.id, node.label, node.statement_name):
+            if key and key in phases:
+                return cls._normalize_phase(phases[key])
+        return "UNKNOWN"
 
     def get_status(self, graph: Graph) -> StatusResponse:
         phases = self._safe_phases()
@@ -122,16 +149,17 @@ class LiveProvider:
         for node in graph.nodes:
             if node.type != "statement":
                 continue
-            phase = self._normalize_phase(phases.get(node.statement_name or ""))
-            raw_metrics = self._safe_metrics(node.statement_name) if node.statement_name else {}
-            pending_records = raw_metrics.get("pending_records")
-            lagging = pending_records is not None and pending_records > _LAG_THRESHOLD_PENDING_RECORDS
+            # Status is phase-only in live mode: a per-node backlog signal would
+            # need a metric call per node per poll (N+1), and materialized tables
+            # don't expose pending_records anyway. A DEGRADED/FAILED phase still
+            # colors the node via the phase mapping; the mock-lag preset is what
+            # demonstrates the lag visual.
             statements.append(
                 NodeStatus(
                     node_id=node.id,
                     statement_name=node.statement_name,
-                    phase=phase,
-                    lagging=lagging,
+                    phase=self._phase_for(node, phases),
+                    lagging=False,
                 )
             )
         rollup = StatusRollup(
@@ -143,15 +171,14 @@ class LiveProvider:
 
     def get_metrics(self, graph: Graph, node_id: str) -> NodeMetrics:
         node = next((n for n in graph.nodes if n.id == node_id), None)
-        if node is None or node.statement_name is None:
+        if node is None or node.type != "statement":
             return NodeMetrics(node_id=node_id, phase="UNKNOWN")
 
         phases = self._safe_phases()
-        phase = self._normalize_phase(phases.get(node.statement_name))
-        raw = self._safe_metrics(node.statement_name)
+        raw = self._safe_metrics(node)
         return NodeMetrics(
             node_id=node_id,
-            phase=phase,
+            phase=self._phase_for(node, phases),
             uptime_seconds=raw.get("uptime_seconds"),
             messages_in_per_sec=raw.get("messages_in_per_sec"),
             messages_out_per_sec=raw.get("messages_out_per_sec"),

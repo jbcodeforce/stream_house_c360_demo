@@ -16,17 +16,31 @@ from data_products import confluent_client, descriptor, providers
 
 
 class _FakeClient:
-    """Stand-in for ``confluent_client.ConfluentClient``."""
+    """Stand-in for ``confluent_client.ConfluentClient`` (all 4 Protocol methods)."""
 
-    def __init__(self, phases: dict[str, str] | None = None, metrics: dict | None = None) -> None:
+    def __init__(
+        self,
+        phases: dict[str, str] | None = None,
+        metrics: dict | None = None,
+        mt_phases: dict[str, str] | None = None,
+        mt_metrics: dict | None = None,
+    ) -> None:
         self._phases = phases or {}
         self._metrics = metrics or {}
+        self._mt_phases = mt_phases or {}
+        self._mt_metrics = mt_metrics or {}
 
     def list_statement_phases(self) -> dict[str, str]:
         return dict(self._phases)
 
+    def list_materialized_table_phases(self) -> dict[str, str]:
+        return dict(self._mt_phases)
+
     def get_statement_metrics(self, statement_name: str) -> dict:
         return dict(self._metrics)
+
+    def get_materialized_table_metrics(self, mt_name: str) -> dict:
+        return dict(self._mt_metrics)
 
 
 class _RaisingClient:
@@ -38,12 +52,23 @@ class _RaisingClient:
     def list_statement_phases(self) -> dict[str, str]:
         raise self._exc
 
+    def list_materialized_table_phases(self) -> dict[str, str]:
+        raise self._exc
+
     def get_statement_metrics(self, statement_name: str) -> dict:
         raise self._exc
 
+    def get_materialized_table_metrics(self, mt_name: str) -> dict:
+        raise self._exc
 
-def _fake_client(phases: dict[str, str] | None = None, metrics: dict | None = None) -> _FakeClient:
-    return _FakeClient(phases=phases, metrics=metrics)
+
+def _fake_client(
+    phases: dict[str, str] | None = None,
+    metrics: dict | None = None,
+    mt_phases: dict[str, str] | None = None,
+    mt_metrics: dict | None = None,
+) -> _FakeClient:
+    return _FakeClient(phases=phases, metrics=metrics, mt_phases=mt_phases, mt_metrics=mt_metrics)
 
 
 def _raising_client(exc: Exception) -> _RaisingClient:
@@ -78,6 +103,21 @@ def test_live_unreachable_does_not_raise():
     status = providers.LiveProvider(client=client).get_status(descriptor.get_graph("c360"))
     assert status.rollup.total == 8
     assert all(s.phase == "UNKNOWN" for s in status.statements)
+
+
+def test_live_status_from_materialized_table_phases():
+    # Materialized tables are keyed by table name (= graph node id/label), not
+    # the dbt statement name — the MT API is their source of truth.
+    client = _fake_client(mt_phases={"src_customers": "RUNNING", "fct_c360_profile": "FAILED"})
+    status = providers.LiveProvider(client=client).get_status(descriptor.get_graph("c360"))
+    byid = {s.node_id: s.phase for s in status.statements}
+    assert byid["src_customers"] == "RUNNING" and byid["fct_c360_profile"] == "FAILED"
+
+
+def test_live_mt_metrics_populate_cfu():
+    client = _fake_client(mt_phases={"src_customers": "RUNNING"}, mt_metrics={"compute_pool_cfu": 3.0})
+    m = providers.LiveProvider(client=client).get_metrics(descriptor.get_graph("c360"), "src_customers")
+    assert m.phase == "RUNNING" and m.compute_pool_cfu == 3.0
 
 
 # --- real-ConfluentClient HTTP-layer tests (httpx mocked, no network) ---
@@ -165,6 +205,53 @@ def test_metrics_parses_latest_data_point_value(monkeypatch):
     # Reads `value` from the most recent point (not a key named after the metric).
     assert metrics["pending_records"] == 4200
     assert metrics["compute_pool_cfu"] == 2.0
+
+
+def test_materialized_table_phases_uses_flink_endpoint(monkeypatch):
+    captured: dict = {}
+
+    def fake_get(url, auth=None, timeout=None):
+        captured["url"] = url
+        captured["auth"] = auth
+        return _Resp({"data": [
+            {"name": "src_customers", "status": {"phase": "RUNNING"}},
+            {"name": "fct_c360_profile", "status": {"phase": "FAILED"}},
+        ]})
+
+    monkeypatch.setattr(confluent_client.httpx, "get", fake_get)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    phases = client.list_materialized_table_phases()
+
+    assert captured["url"] == (
+        "https://flink.us-east-2.aws.confluent.cloud/sql/v1/organizations/"
+        "org-1/environments/env-1/materialized-tables"
+    )
+    assert captured["auth"] == ("fk", "fs")
+    assert phases == {"src_customers": "RUNNING", "fct_c360_profile": "FAILED"}
+
+
+def test_mt_metrics_query_uses_materialized_table_dimension(monkeypatch):
+    calls: list[dict] = []
+
+    def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002
+        calls.append({"url": url, "auth": auth, "body": json})
+        return _Resp({"data": [{"timestamp": "2026-10-26T10:05:00Z", "value": 1.5}]})
+
+    monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    metrics = client.get_materialized_table_metrics("src_customers")
+
+    assert len(calls) == 1
+    body = calls[0]["body"]
+    assert calls[0]["url"] == "https://api.telemetry.confluent.cloud/v2/metrics/cloud/query"
+    assert body["aggregations"][0]["metric"] == "io.confluent.flink/materialized_table_utilization/current_cfus"
+    # Scoped by the materialized-table name dimension (not statement/pool dims).
+    assert body["filter"]["field"] == confluent_client._MT_NAME_DIMENSION
+    assert body["filter"]["value"] == "src_customers"
+    assert body["intervals"] and "/" in body["intervals"][0]
+    assert metrics["compute_pool_cfu"] == 1.5
 
 
 def test_metrics_forbidden_is_swallowed(monkeypatch):
