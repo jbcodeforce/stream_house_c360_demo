@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date, timezone
+from datetime import timezone
 from pathlib import Path
 
 from confluent_kafka.schema_registry import SchemaRegistryClient
@@ -48,20 +48,9 @@ _SOURCE_SCHEMA = "public"
 _SOURCE_TABLE = "customers"
 
 # ---------------------------------------------------------------------------
-# Date encoding helpers
-# Debezium io.debezium.time.Date → int (days since Unix epoch 1970-01-01)
-# Debezium io.debezium.time.ZonedTimestamp → ISO-8601 string
+# Timestamp encoding helper
+# Debezium io.debezium.time.ZonedTimestamp → ISO-8601 string (TIMESTAMPTZ)
 # ---------------------------------------------------------------------------
-
-_EPOCH = date(1970, 1, 1)
-
-
-def _to_debezium_date(d: date | None) -> int | None:
-    """Convert a Python date to days-since-epoch (Debezium Date encoding)."""
-    if d is None:
-        return None
-    return (d - _EPOCH).days
-
 
 def _to_debezium_ts(dt) -> str:
     """Convert a datetime to Debezium ZonedTimestamp format.
@@ -89,8 +78,8 @@ def _build_value(customer: Customer) -> dict:
         "last_name": customer.last_name,
         "email": customer.email,
         "phone": customer.phone,
-        "date_of_birth": _to_debezium_date(
-            customer.date_of_birth.date()
+        "date_of_birth": (
+            _to_debezium_ts(customer.date_of_birth)
             if customer.date_of_birth is not None
             else None
         ),
@@ -101,7 +90,7 @@ def _build_value(customer: Customer) -> dict:
         "state": customer.state,
         "postal_code": customer.postal_code,
         "country": customer.country,
-        "customer_since": _to_debezium_date(customer.customer_since),
+        "customer_since": _to_debezium_ts(customer.customer_since),
         "segment": customer.segment,
         "status": customer.status,
         "created_at": _to_debezium_ts(customer.created_at),

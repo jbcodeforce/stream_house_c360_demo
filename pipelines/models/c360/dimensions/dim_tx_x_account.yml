@@ -13,11 +13,11 @@ models:
       - type: primary_key
         expression: "not enforced"
   - name: account_count
-    data_type: int
+    data_type: BIGINT
   - name: total_balance
     data_type: decimal
   - name: txn_count
-    data_type: decimal
+    data_type: BIGINT
   - name: txn_total
     data_type: decimal
   - name: last_transacted_at

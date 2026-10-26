@@ -21,7 +21,7 @@ models:
   - name: balance
     data_type: DECIMAL
   - name: txn_count
-    data_type: DECIMAL
+    data_type: BIGINT
   - name: txn_total
     data_type: DECIMAL
   - name: last_transacted_at

@@ -37,7 +37,7 @@ _DDL_STATEMENTS = [
         state           VARCHAR(100),
         postal_code     VARCHAR(20),
         country         VARCHAR(60)     NOT NULL DEFAULT 'US',
-        customer_since  DATE            NOT NULL DEFAULT CURRENT_DATE,
+        customer_since  TIMESTAMPTZ     NOT NULL DEFAULT NOW(),
         segment         VARCHAR(50),
         status          VARCHAR(20)     NOT NULL DEFAULT 'ACTIVE',
         created_at      TIMESTAMPTZ     NOT NULL DEFAULT NOW(),

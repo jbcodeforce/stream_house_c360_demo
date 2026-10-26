@@ -46,9 +46,9 @@
               "type": [
                 "null",
                 {
-                  "connect.name": "io.debezium.time.Date",
+                  "connect.name": "io.debezium.time.ZonedTimestamp",
                   "connect.version": 1,
-                  "type": "int"
+                  "type": "string"
                 }
               ]
             },
@@ -109,13 +109,13 @@
               }
             },
             {
-              "default": 0,
+              "default": "1970-01-01T00:00:00.000000Z",
               "name": "customer_since",
               "type": {
-                "connect.default": 0,
-                "connect.name": "io.debezium.time.Date",
+                "connect.default": "1970-01-01T00:00:00.000000Z",
+                "connect.name": "io.debezium.time.ZonedTimestamp",
                 "connect.version": 1,
-                "type": "int"
+                "type": "string"
               }
             },
             {

@@ -342,7 +342,7 @@ class TestDebeziumEnvelope:
             last_name="Test",
             email="env@test.com",
             country="US",
-            customer_since=date(2024, 1, 15),
+            customer_since=datetime(2024, 1, 15, tzinfo=timezone.utc),
             status="ACTIVE",
             created_at=datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
             updated_at=datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
@@ -380,12 +380,11 @@ class TestDebeziumEnvelope:
         assert src["schema"] == "public"
         assert src["table"] == "customers"
 
-    def test_customer_since_is_days_since_epoch(self):
-        """customer_since=2024-01-15 → (2024-01-15 − 1970-01-01).days = 19737."""
+    def test_customer_since_is_debezium_zoned_timestamp(self):
         from customers.kafka_producer import _build_value
         c = self._make_customer()
         value = _build_value(c)
-        assert value["customer_since"] == 19737  # known literal
+        assert value["customer_since"] == "2024-01-15T00:00:00.000000Z"
 
     def test_created_at_is_debezium_zoned_timestamp(self):
         from customers.kafka_producer import _build_value

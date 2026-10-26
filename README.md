@@ -2,7 +2,7 @@
 
 *Updated 10/04/2026: Add webapp for demos*
 
-The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. It is a demonstration of Streamhouse.
+The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. It is a demonstration of the Streamhouse architecture with Confluent Cloud solution.
 
 Streamhouse data architecture continuously captures and processes changes as they happen, governs that data, and makes the same trusted business context available to applications, agents and analytics without requiring another set of data copies and pipelines.
 
@@ -77,7 +77,7 @@ The following steps are generic and may be supported by different tools:
 
 **The goal is to demonstrate how to synchronize a change in business state everywhere it is used.**
 
-We will mockup transactional application / microservices writing transactions, accounts and customers records to a SQL database. We can use IBM Db2 RDBMS or Postgresql as databasse server. 
+We will mockup transactional application / microservices writing transactions, accounts and customers records to a SQL database. We can use IBM Db2 RDBMS or Postgresql as databasse server. The solution can run the database server locally or remotely deployed on AWS RDS. 
 
 The end-to-end, more complex architecture, looks like in the following figure:
 
@@ -111,7 +111,7 @@ The Web App and backend to support running the demonstration has the following c
 
 ![](./docs/diagrams/backend.drawio.png)
 
-* This is to emulate a microservice implementation where each service is responsible for one business entity life cycle. An evolution of the implementation will be to implement the [CQRS pattern](https://jbcodeforce.github.io/eda-studies/patterns/cqrs/), and deploy each compoenent as a standalone application
+* This is to emulate a microservice implementation where each service is responsible for one business entity life cycle. An evolution of the implementation will be to implement the [CQRS pattern](https://jbcodeforce.github.io/eda-studies/patterns/cqrs/), and deploy each component as a standalone application
 * [See implementation details for developers willing to update this demonstration](./docs/web_app_design.md)
 
 ### Demonstration Script
@@ -121,7 +121,7 @@ As explained before we can demonstrate the Streamhouse architecture in different
 *  Deploy Confluent Cloud components: This step is to create Environment, Kafka cluster, schema registry, service accounts, api keys and secrets, and compute pools. We propose two approches to define the environment and components of this demonstration, one using the Confluent Console or one using Terraform:
     * [using Terraform](./docs/sre_ccloud_tf.md).
     * [or using the Confluent cloud console](./docs/sre_ccloud.md)
-* [AWS components deployments](./docs/sre_aws.md) using terraform. It also includes the terraform definition to deploy Debezium CDC source connector.
-* [Deploying the Flink pipeline](./docs/flink_deployment.md) to build the customer 360 analytics profile.
-* [See dedicated note](./docs/demo_script.md) to run the application with local components.
+* [AWS components deployments](./docs/sre_aws.md) using terraform. It also includes the terraform definition to deploy Debezium CDC source connector. This step is optional as the application can emulates CDC connector and use local database.
+* [Deploying the Flink pipeline](./docs/flink_deployment.md) to build the customer 360 analytics profile using Confluent dbt.
+* [See dedicated 'demo script' note](./docs/demo_script.md) to run the application with local components.
 

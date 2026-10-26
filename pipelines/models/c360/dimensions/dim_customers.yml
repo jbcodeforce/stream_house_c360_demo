@@ -17,15 +17,15 @@ models:
   - name: last_name
     data_type: string
   - name: date_of_birth
-    data_type: integer
+    data_type: timestamp_ltz
   - name: gender
     data_type: string
   - name: registration_date
-    data_type: string
+    data_type: timestamp_ltz
   - name: customer_segment
     data_type: string
   - name: customer_since
-    data_type: integer
+    data_type: timestamp_ltz
   - name: city
     data_type: string
   - name: state

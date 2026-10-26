@@ -1,7 +1,7 @@
-from datetime import date, datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class CustomerCreate(BaseModel):
@@ -17,7 +17,7 @@ class CustomerCreate(BaseModel):
     state: str | None = None
     postal_code: str | None = None
     country: str = "US"
-    customer_since: date = date.today()
+    customer_since: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
     segment: str | None = None
     status: str = "ACTIVE"
 
@@ -35,14 +35,13 @@ class CustomerUpdate(BaseModel):
     state: str | None = None
     postal_code: str | None = None
     country: str | None = None
-    customer_since: date | None = None
+    customer_since: datetime | None = None
     segment: str | None = None
     status: str | None = None
 
 
 class Customer(CustomerCreate):
     model_config = ConfigDict(from_attributes=True)
-
     customer_id: UUID
     created_at: datetime
     updated_at: datetime

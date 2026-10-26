@@ -29,12 +29,12 @@ SELECT
     postal_code,
     country,
     event_ts,
-    TIMESTAMPDIFF(YEAR, TO_TIMESTAMP_LTZ(date_of_birth,3), event_ts) age_years,
-    TIMESTAMPDIFF(DAY, TO_TIMESTAMP_LTZ(registration_date), event_ts) as days_since_registration,
+    TIMESTAMPDIFF(YEAR, date_of_birth, event_ts) age_years,
+    TIMESTAMPDIFF(DAY, registration_date, event_ts) as days_since_registration,
      CASE
-        WHEN TIMESTAMPDIFF(YEAR, TO_TIMESTAMP_LTZ(date_of_birth,3), event_ts)  < 25 THEN 'Gen Z'
-        WHEN TIMESTAMPDIFF(YEAR, TO_TIMESTAMP_LTZ(date_of_birth,3), event_ts)  < 40 THEN 'Millennial'
-        WHEN TIMESTAMPDIFF(YEAR, TO_TIMESTAMP_LTZ(date_of_birth,3), event_ts) < 55 THEN 'Gen X'
+        WHEN TIMESTAMPDIFF(YEAR, date_of_birth, event_ts)  < 25 THEN 'Gen Z'
+        WHEN TIMESTAMPDIFF(YEAR, date_of_birth, event_ts)  < 40 THEN 'Millennial'
+        WHEN TIMESTAMPDIFF(YEAR, date_of_birth, event_ts) < 55 THEN 'Gen X'
         ELSE 'Boomer+' END AS generation_segment,
     CASE
         WHEN email IS NULL

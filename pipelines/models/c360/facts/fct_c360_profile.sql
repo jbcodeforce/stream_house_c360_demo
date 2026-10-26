@@ -17,6 +17,22 @@ SELECT
     c.customer_id,
     c.first_name,
     c.last_name,
-FROM {{ ref( 'dim_transactions') }} t
-LEFT JOIN {{ref('dim_customers') }} c 
-ON t.customer_id = c.customer_id
+    c.customer_segment,
+    c.customer_since,
+    c.gender,
+    c.city,
+    c.postal_code,
+    c.country,
+    c.state,
+    c.days_since_registration,
+    c.age_years,
+    c.generation_segment,
+    c.missing_email_flag,
+    c.missing_phone_flag,
+    t.account_count,
+    t.total_balance,
+    t.txn_count,
+    t.txn_total
+FROM {{ref('dim_customers') }} c 
+LEFT JOIN  {{ ref( 'dim_tx_x_account') }} t
+ON c.customer_id = t.customer_id
