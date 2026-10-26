@@ -49,33 +49,29 @@ logger = logging.getLogger(__name__)
 _METRICS_LOOKBACK = timedelta(minutes=15)
 
 
-def _is_auth_error(exc: Exception) -> bool:
-    """True for a 401/403 HTTP response — an auth/authorization failure."""
-    return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in (401, 403)
-
-
-_METRICS_AUTH_HINT = (
-    "ConfluentClient: Metrics API returned %s for %s — the Cloud API key's "
-    "principal is likely missing the MetricsViewer role. Use a Cloud API key "
-    "(resource scope 'cloud') whose service account/user has MetricsViewer "
-    "(confluent iam rbac role-binding create --role MetricsViewer). "
-    "Changing the key alone won't help; 403 means authenticated-but-not-authorized."
+# A 403 from the Metrics API has TWO distinct causes, and the response body
+# (logged below) is what distinguishes them: (a) the Cloud API key's principal
+# lacks the MetricsViewer role, or (b) the query isn't scoped to an authorized
+# resource — typically because a filter dimension is wrong/unrecognized, so the
+# API treats the query as filtering by no authorized resource at all.
+_AUTH_ERROR_HINT = (
+    " | 403/401 cause is in the body above: either the Cloud API key's principal "
+    "lacks the MetricsViewer role (confluent iam rbac role-binding create --role "
+    "MetricsViewer), or the query isn't scoped to an authorized resource (often a "
+    "wrong/unrecognized filter dimension — see _MT_NAME_DIMENSION)."
 )
 
 
 def _log_metrics_error(exc: Exception, context: str) -> None:
-    """Log a Metrics API failure concisely and actionably (no raw traceback
-    for the common HTTP errors). A 4xx body carries the precise reason — a 422
-    names the offending field, a 403 the missing authorization — so surface it."""
-    if _is_auth_error(exc):
-        logger.warning(_METRICS_AUTH_HINT, exc.response.status_code, context)
-    elif isinstance(exc, httpx.HTTPStatusError):
-        logger.warning(
-            "ConfluentClient: Metrics API %s for %s: %s",
-            exc.response.status_code,
-            context,
-            exc.response.text[:500],
-        )
+    """Log a Metrics API failure concisely and actionably (no raw traceback for
+    HTTP errors). The 4xx response body carries the precise reason — a 422 names
+    the offending field, a 403 says whether it's a role or a resource-scope
+    problem — so always surface the body."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code
+        body = exc.response.text[:800]
+        hint = _AUTH_ERROR_HINT if status in (401, 403) else ""
+        logger.warning("ConfluentClient: Metrics API %s for %s: %s%s", status, context, body, hint)
     else:
         logger.warning("ConfluentClient: Metrics API query failed for %s", context, exc_info=True)
 
