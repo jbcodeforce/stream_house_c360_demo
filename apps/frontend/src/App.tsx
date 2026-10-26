@@ -12,6 +12,7 @@ import TransactionFormPage from './pages/TransactionFormPage'
 import GeneratedTransactionsPage from './pages/GeneratedTransactionsPage'
 import DataProductsPage from './pages/DataProductsPage'
 import StatementGraphPage from './pages/StatementGraphPage'
+import AnalyticsPage from './pages/AnalyticsPage'
 
 export default function App() {
   return (
@@ -32,6 +33,7 @@ export default function App() {
         <Route path="/transactions/:id" element={<TransactionDetailPage />} />
         <Route path="/data-products" element={<DataProductsPage />} />
         <Route path="/data-products/:id" element={<StatementGraphPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
       </Route>
     </Routes>
   )

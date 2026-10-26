@@ -29,4 +29,13 @@ describe('Sidebar', () => {
       '/data-products',
     )
   })
+
+  it('renders an Analytics link pointing to /analytics', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('link', { name: /analytics/i })).toHaveAttribute('href', '/analytics')
+  })
 })

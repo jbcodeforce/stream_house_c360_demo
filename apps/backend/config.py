@@ -105,6 +105,13 @@ class Settings(BaseSettings):
     # Confluent Cloud + Flink (Task 3).
     GRAPH_DATA_MODE: str = "mock"
 
+    # C360 analytics dashboard: selects the snapshot-row provider.
+    # "mock" uses a deterministic fixture; "live" runs a Flink SQL snapshot
+    # query against fct_c360_profile (needs FLINK_CATALOG / FLINK_DATABASE).
+    ANALYTICS_DATA_MODE: str = "mock"
+    # Row cap for the live snapshot SELECT (the table is one row per customer).
+    ANALYTICS_SNAPSHOT_LIMIT: int = 50_000
+
     # Live-mode credentials (unused until Task 3's LiveProvider).
     CONFLUENT_CLOUD_API_KEY: str | None = None
     CONFLUENT_CLOUD_API_SECRET: str | None = None
@@ -114,6 +121,10 @@ class Settings(BaseSettings):
     FLINK_ENV_ID: str | None = None
     FLINK_COMPUTE_POOL_ID: str | None = None
     FLINK_REST_ENDPOINT: str | None = None
+    # Catalog/database for Flink SQL snapshot queries — the Confluent Cloud
+    # environment and Kafka cluster *display names* (not their IDs).
+    FLINK_CATALOG: str | None = None
+    FLINK_DATABASE: str | None = None
 
     @model_validator(mode="after")
     def _resolve_cdc_connector(self) -> "Settings":
@@ -138,6 +149,7 @@ class Settings(BaseSettings):
             "KAFKA_BOOTSTRAP_SERVERS": self.KAFKA_BOOTSTRAP_SERVERS or "None",
             "SCHEMA_REGISTRY_URL": self.SCHEMA_REGISTRY_URL or "None",
             "GRAPH_DATA_MODE": self.GRAPH_DATA_MODE,
+            "ANALYTICS_DATA_MODE": self.ANALYTICS_DATA_MODE,
             "FLINK_REST_ENDPOINT": self.FLINK_REST_ENDPOINT or "None",
         }
 
