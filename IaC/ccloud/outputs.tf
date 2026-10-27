@@ -64,6 +64,22 @@ output "flink_compute_pool_id" {
   value       = confluent_flink_compute_pool.pool.id
 }
 
+output "flink_runner_sa_id" {
+  description = "Service account ID that owns the Flink API key"
+  value       = confluent_service_account.flink_runner.id
+}
+
+output "flink_api_key_id" {
+  description = "Flink API key ID, scoped to this environment/region (FLINK_API_KEY)"
+  value       = confluent_api_key.flink-api-key.id
+}
+
+output "flink_api_key_secret" {
+  description = "Flink API key secret (FLINK_API_SECRET)"
+  value       = confluent_api_key.flink-api-key.secret
+  sensitive   = true
+}
+
 
 # ------------------------------------------------------
 # Schema registry
@@ -86,5 +102,24 @@ output "schema_registry_api_key_id" {
 output "schema_registry_api_key_secret" {
   description = "Schema Registry API key secret"
   value       = confluent_api_key.schema-registry-api-key.secret
+  sensitive   = true
+}
+
+# ------------------------------------------------------
+# RTCE / Lightning Query API (Global key)
+# ------------------------------------------------------
+output "rtce_lightning_sa_id" {
+  description = "Service account ID that owns the RTCE Lightning Global key"
+  value       = confluent_service_account.rtce_lightning.id
+}
+
+output "rtce_lightning_api_key_id" {
+  description = "Global API key ID for the RTCE Lightning Query API (CONFLUENT_GLOBAL_KEY)"
+  value       = confluent_api_key.rtce_lightning.id
+}
+
+output "rtce_lightning_api_key_secret" {
+  description = "Global API key secret for the RTCE Lightning Query API (CONFLUENT_GLOBAL_SECRET)"
+  value       = confluent_api_key.rtce_lightning.secret
   sensitive   = true
 }

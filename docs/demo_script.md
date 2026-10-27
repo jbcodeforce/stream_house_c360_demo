@@ -2,7 +2,7 @@
 
 Two approaches: 
 
-1. local database, writing directly to Kafka topics defined within Confluent Cloud Kafka Cluster
+1. Local database, writing directly to Kafka topics defined within Confluent Cloud Kafka Cluster
 2. Run Database on AWS, with Kafka Connector defined to get data from the database to Kafka topics. This approach has cost for the services on AWS.
 
 The web application is able to write to remote database or work with local database and remote Kafka.
@@ -31,7 +31,7 @@ Once the Confluent Cloud and AWS resources are created by Terraform, the user st
     export ENV_CONFIG_FILE=./apps/backend/.env
     ```
 
-* Start the local webapp with remote database
+* Start the local webapp with remote RDS database
     ```sh
     ./scripts/run_dev.sh --db rds
     ```
@@ -44,6 +44,7 @@ This time the database runs locally and the web app writes to kafka in parallel 
 
 ![](./diagrams/local_execution.drawio.png)
 
+
 * Set environment variables to access Confluent Cloud resources, like Kafka, schema Key/secrets and bootstrap address. This can be done by looking terraform output:
     ```sh
     source ./scripts/set_env_from_tf.sh
@@ -52,61 +53,106 @@ This time the database runs locally and the web app writes to kafka in parallel 
     or using your own scripts to get environment variables preset, to an existing Confluent Cloud environment.
 * Set where to find the specidic .env file. You can use different .env file and reference it via environment variable:
     ```sh
-    export ENV_CONFIG_FILE=$PWD/apps/backend/.env.j9r
-    ```
+    export ENV_CONFIG_FILE=$PWD/apps/backend/.env
 
-As an alternate when reusing an existing Confluent Cloud environment, set, via script the following environment variables:
-```sh
-export ENVIRONMENT_ID=
-export CC_REGION=
-export CC_PROVIDER=
-export KAFKA_CLUSTER_NAME=
-export KAFKA_API_KEY=
-export KAFKA_API_SECRET=
-export KAFKA_BOOTSTRAP_SERVERS=
-export FLINK_COMPUTE_POOL_ID=
-export SCHEMA_REGISTRY_KEY=
-export SCHEMA_REGISTRY_SECRET=
-echo "----------------"
-export DB_PASSWORD=
-export DBNAME=
-export DATABASE_URL="postgresql://dbadmin:${DB_PASSWORD}@${RDSHOST}:${RDSPORT}/${DBNAME}"
-```
+    ```
 
 * Start the local webapp
     ```sh
     ./scripts/run_dev.sh 
     ```
 
+* Deploy the Flink statement using dbt
+    ```sh
+    cd pipelines
+    source .venv/bin/activate
+    # verify the version, if need to update, change in pyproject.yaml in pipelines folder
+    dbt version
+    # Deploy the c360 data product from the fact table to the parents
+    dbt run --select +c360.facts.fct_c360_profile
+    ```
 
 ## Demonstration Scenarios
+
+With the following setting in the environment variables, the backend service will create cdc topics, schemas, and send data to kafka directly:
+
+```sh
+SINK=postgres
+KAFKA_PRODUCE_ENABLED=true
+CDC_CONNECTOR_ENABLED=false
+KAFKA_SEED_ON_START=true
+```
+
+For pure CDC processing, using a CDC connector in Confluent cloud:
+```
+CDC_CONNECTOR_ENABLED=true
+KAFKA_SEED_ON_START=false
+KAFKA_PRODUCE_ENABLED=false
+```
+
+### Use the Web App
+
+[http://localhost:5173/](http://localhost:5173/)
+
 ### Customers Management
 
-The customers page presents a list of customers in the real database:
+The customers page presents a list of existing customers loaded from the database:
 
 ![](./images/customers_page.png)
 
-It is possible to add a new customer, or update an existing one.
+It is possible to add a new customer, with the Add customer button, or view, update, delete an existing customer using the action icon.
+
+For example selecting the eye icon on James Carter brings this view:
+
+![](./images/james_carter.png)
 
 ### Accounts Management
 
-The accounts page presents a list of account per customer in the real database:
+The accounts page presents a list of account per customer loaded from the database:
 
 ![](./images/web_accounts.png)
 
 
 ### Transaction Management
 
-The transactions page presents a list of current transactions in the real database:
+The transactions page presents a list of current transactions in the database:
 
 ![](./images/web_tx.png)
 
 To simulate a week of activity, click **Generate 200 transactions**. The backend creates 200 transactions on existing accounts, timestamped from 7 days ago in 15-minute increments, inserts them in Postgres and (when `KAFKA_PRODUCE_ENABLED=true` and no CDC connector owns Kafka) publishes them to the `cdc.public.transactions` topic. The page then shows the newly created transactions (the list is not kept after a browser refresh).
 
+### Data products view
 
+This page demonstrates the presentation of metrics per data analytics as a product. 
 
+* First select the analytics product
+    ![](./images/select-data-product.png)
 
-### Verify data are in tables. 
+* See the pipeline graph for one of the fact table:
+    ![](./images/statement_graph.png)
+
+* User can drill down to see real-time metrics for on of the statement, and the deployed SQL query:
+    ![](./images/statement_metrics.png)
+
+    The message in and out should be greater than 0 when there is record flowing into the topics.
+
+### Analytics Dashboard
+
+The Analytics page is an illustration of what can be done by directly accessing data in kafka
+
+1. Get the aggregation cross customers, by querying, via Flink snapshot query, the `fct_c360_profile` topic
+    ![](./images/fct_c360_profile_db.png)
+
+    The backend also returns the elapse time from a client point of view. Arrounf 6.60s to get results, using Flink Snapshot query.
+
+1. Use the snapshot query, which creates a Flink Statement, to get a data for a user:
+    ![](./images/snap_query_carter.png)
+    Same as above the query now has where condition on the customer name.
+    
+1. We can do the same query with the new Real-time context engine, lightning query:
+    ![]()
+
+### Verify data are in Postgresql tables. 
 
 * Start a session in psql:
     ```sh

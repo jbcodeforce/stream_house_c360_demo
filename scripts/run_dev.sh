@@ -74,7 +74,24 @@ dsn_target() {
   echo "$1" | sed -E 's#^[^@]*@##; s#\?.*$##'
 }
 
-# Load key-values from a .env file without overriding existing environment variables.
+# Keys the script intentionally derives/overrides itself (from flags or host
+# inference), so a shell value differing from the file is expected, not a mistake.
+SHADOW_IGNORE_RE='^(ENV_CONFIG_FILE|DATABASE_URL|CDC_CONNECTOR_ENABLED|SINK|VITE_API_BASE_URL)$'
+# Populated by load_dotenv: keys whose already-exported shell value differs from
+# the .env file, so the file edit is silently ignored (shell env wins in both
+# load_dotenv below and pydantic-settings). Printed as a warning afterward.
+SHADOWED_VARS=()
+
+# Mask values of secret-looking keys so a warning never leaks credentials.
+mask_value() {
+  case "$1" in
+    *KEY*|*SECRET*|*PASSWORD*|*TOKEN*|*DATABASE_URL*) echo "****" ;;
+    *) echo "$2" ;;
+  esac
+}
+
+# Load key-values from a .env file without overriding existing environment
+# variables. Records any key whose shell value shadows a differing file value.
 load_dotenv() {
   local env_file="$1"
   [[ -f "$env_file" ]] || return 0
@@ -92,6 +109,8 @@ load_dotenv() {
       fi
       if [[ -z "${!var_name+x}" ]]; then
         export "$var_name"="$var_value"
+      elif [[ "${!var_name}" != "$var_value" && ! "$var_name" =~ $SHADOW_IGNORE_RE ]]; then
+        SHADOWED_VARS+=("${var_name} (shell=$(mask_value "$var_name" "${!var_name}") file=$(mask_value "$var_name" "$var_value"))")
       fi
     fi
   done < "$env_file"
@@ -122,8 +141,33 @@ elif [[ -f "${REPO_ROOT}/.env" ]]; then
 fi
 
 if [[ -n "$RESOLVED_ENV_FILE" && -f "$RESOLVED_ENV_FILE" ]]; then
+  # Guard 1: ENV_CONFIG_FILE points away from the default apps/backend/.env while
+  # that default also exists — edits to .env are then silently ignored. The
+  # resolved paths are compared by basename+size-independent realpath where
+  # available, else by string, to tolerate the "/./" relative forms.
+  DEFAULT_ENV_FILE="${BACKEND_DIR}/.env"
+  if [[ -f "$DEFAULT_ENV_FILE" ]]; then
+    _resolved_real="$(cd "$(dirname "$RESOLVED_ENV_FILE")" 2>/dev/null && echo "$(pwd)/$(basename "$RESOLVED_ENV_FILE")")"
+    _default_real="$(cd "$(dirname "$DEFAULT_ENV_FILE")" 2>/dev/null && echo "$(pwd)/$(basename "$DEFAULT_ENV_FILE")")"
+    if [[ "$_resolved_real" != "$_default_real" ]]; then
+      warn "ENV_CONFIG_FILE points at '$RESOLVED_ENV_FILE', so the default"
+      warn "  '$DEFAULT_ENV_FILE' is NOT loaded — edits there are ignored."
+      warn "  Run 'unset ENV_CONFIG_FILE' (and remove it from your shell profile) to use the default."
+    fi
+  fi
+
   load_dotenv "$RESOLVED_ENV_FILE"
   export ENV_CONFIG_FILE="$RESOLVED_ENV_FILE"
+
+  # Guard 2: shell env vars that shadow (and differ from) the .env file. Because
+  # load_dotenv won't override an already-set var AND pydantic-settings ranks real
+  # env vars above the env_file, these make the file edit a silent no-op.
+  if (( ${#SHADOWED_VARS[@]} > 0 )); then
+    warn "These variables are already set in your shell and OVERRIDE '$RESOLVED_ENV_FILE'"
+    warn "  (edits to the file are ignored for them — shell wins):"
+    for _v in "${SHADOWED_VARS[@]}"; do warn "    $_v"; done
+    warn "  Run 'unset <NAME>' for each, or start a fresh shell, to use the file values."
+  fi
 fi
 
 # ── Argument parsing ────────────────────────────────────────────────────────
