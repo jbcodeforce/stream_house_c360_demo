@@ -136,6 +136,16 @@ def test_live_mt_metrics_populate_cfu():
     assert m.phase == "RUNNING" and m.compute_pool_cfu == 3.0
 
 
+def test_live_mt_node_sql_comes_from_materialized_table_spec():
+    # A materialized table's defining SQL is read from the MT list (spec.query),
+    # since its DDL statement isn't in the Statements list.
+    client = _fake_client(
+        mt_tables={"src_customers": {"phase": "RUNNING", "uid": "mt-1", "sql": "SELECT 1 FROM src"}},
+    )
+    m = providers.LiveProvider(client=client).get_metrics(descriptor.get_graph("c360"), "src_customers")
+    assert m.sql == "SELECT 1 FROM src"
+
+
 def _mixed_graph() -> Graph:
     """One materialized node and one streaming node, so metrics routing can be
     asserted per table_type (the c360 descriptor is all-materialized)."""
@@ -221,8 +231,9 @@ def test_metrics_query_body_matches_metrics_api_schema(monkeypatch):
 
     client.get_statement_metrics("models-c360-sources-pipeline-src-customers")
 
-    # Two scoped queries: statement-level pending_records + pool-level CFUs.
-    assert len(calls) == 2
+    # Four scoped queries: statement pending_records, pool CFUs, and the two
+    # record-count counters (in/out) that back messages_in/out_per_sec.
+    assert len(calls) == 4
     for call in calls:
         # Regression guard: telemetry host, not api.confluent.cloud; HTTP Basic (not bearer).
         assert call["url"] == "https://api.telemetry.confluent.cloud/v2/metrics/cloud/query"
@@ -235,12 +246,19 @@ def test_metrics_query_body_matches_metrics_api_schema(monkeypatch):
     bodies_by_metric = {c["body"]["aggregations"][0]["metric"]: c["body"] for c in calls}
     assert "io.confluent.flink/pending_records" in bodies_by_metric
     assert "io.confluent.flink/compute_pool_utilization/current_cfus" in bodies_by_metric
+    assert "io.confluent.flink/num_records_in" in bodies_by_metric
+    assert "io.confluent.flink/num_records_out" in bodies_by_metric
 
     # pending_records must be scoped to the statement via the correct filter field.
     pending_body = bodies_by_metric["io.confluent.flink/pending_records"]
     filter_fields = {f["field"]: f["value"] for f in pending_body["filter"]["filters"]}
     assert filter_fields["resource.flink_statement.name"] == "models-c360-sources-pipeline-src-customers"
     assert filter_fields["resource.compute_pool.id"] == "lfcp-x"
+
+    # Record counters are scoped the same way (authorized pool + statement name).
+    in_fields = {f["field"]: f["value"] for f in bodies_by_metric["io.confluent.flink/num_records_in"]["filter"]["filters"]}
+    assert in_fields["resource.flink_statement.name"] == "models-c360-sources-pipeline-src-customers"
+    assert in_fields["resource.compute_pool.id"] == "lfcp-x"
 
 
 def test_metrics_parses_latest_data_point_value(monkeypatch):
@@ -251,6 +269,10 @@ def test_metrics_parses_latest_data_point_value(monkeypatch):
                 {"timestamp": "2026-10-24T10:00:00Z", "value": 10},
                 {"timestamp": "2026-10-24T10:05:00Z", "value": 4200},  # latest
             ]})
+        if metric == "io.confluent.flink/num_records_in":
+            return _Resp({"data": [{"timestamp": "2026-10-24T10:05:00Z", "value": 120}]})
+        if metric == "io.confluent.flink/num_records_out":
+            return _Resp({"data": [{"timestamp": "2026-10-24T10:05:00Z", "value": 60}]})
         return _Resp({"data": [{"timestamp": "2026-10-24T10:05:00Z", "value": 2.0}]})
 
     monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
@@ -261,6 +283,9 @@ def test_metrics_parses_latest_data_point_value(monkeypatch):
     # Reads `value` from the most recent point (not a key named after the metric).
     assert metrics["pending_records"] == 4200
     assert metrics["compute_pool_cfu"] == 2.0
+    # COUNTER value is records per PT1M interval -> per-second rate divides by 60.
+    assert metrics["messages_in_per_sec"] == 120 / 60
+    assert metrics["messages_out_per_sec"] == 60 / 60
 
 
 def test_list_materialized_tables_parses_name_phase_uid(monkeypatch):
@@ -270,8 +295,11 @@ def test_list_materialized_tables_parses_name_phase_uid(monkeypatch):
         captured["url"] = url
         captured["auth"] = auth
         return _Resp({"data": [
-            {"name": "src_customers", "metadata": {"uid": "mt-1"}, "status": {"phase": "RUNNING", "version": 3}},
-            {"name": "fct_c360_profile", "metadata": {"uid": "mt-2"}, "status": {"phase": "FAILED", "version": 1}},
+            {"name": "src_customers", "metadata": {"uid": "mt-1"},
+             "status": {"phase": "RUNNING", "version": 3},
+             "spec": {"query": "SELECT * FROM cust"}},
+            {"name": "fct_c360_profile", "metadata": {"uid": "mt-2"},
+             "status": {"phase": "FAILED", "version": 1}},  # no spec.query
         ]})
 
     monkeypatch.setattr(confluent_client.httpx, "get", fake_get)
@@ -284,13 +312,15 @@ def test_list_materialized_tables_parses_name_phase_uid(monkeypatch):
         "org-1/environments/env-1/materialized-tables"
     )
     assert captured["auth"] == ("fk", "fs")
+    # The MT's defining SQL (spec.query) rides along for the drill-down panel;
+    # it's None when the spec omits it.
     assert tables == {
-        "src_customers": {"phase": "RUNNING", "uid": "mt-1", "version": 3},
-        "fct_c360_profile": {"phase": "FAILED", "uid": "mt-2", "version": 1},
+        "src_customers": {"phase": "RUNNING", "uid": "mt-1", "version": 3, "sql": "SELECT * FROM cust"},
+        "fct_c360_profile": {"phase": "FAILED", "uid": "mt-2", "version": 1, "sql": None},
     }
 
 
-def test_mt_metrics_query_uses_materialized_table_uid_dimension(monkeypatch):
+def test_mt_metrics_query_scopes_by_pool_and_uid(monkeypatch):
     calls: list[dict] = []
 
     def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002
@@ -302,15 +332,50 @@ def test_mt_metrics_query_uses_materialized_table_uid_dimension(monkeypatch):
 
     metrics = client.get_materialized_table_metrics("mt-uid-123")
 
-    assert len(calls) == 1
-    body = calls[0]["body"]
+    bodies_by_metric = {c["body"]["aggregations"][0]["metric"]: c["body"] for c in calls}
+    cfu_metric = "io.confluent.flink/materialized_table_utilization/current_cfus"
+    assert cfu_metric in bodies_by_metric
+    body = bodies_by_metric[cfu_metric]
     assert calls[0]["url"] == "https://api.telemetry.confluent.cloud/v2/metrics/cloud/query"
-    assert body["aggregations"][0]["metric"] == "io.confluent.flink/materialized_table_utilization/current_cfus"
-    # Scoped by the materialized-table UID (canonical resource id), not .name.
-    assert body["filter"]["field"] == confluent_client._MT_UID_DIMENSION
-    assert body["filter"]["value"] == "mt-uid-123"
+    # The principal is authorized on the compute pool, so every MT query must
+    # filter by BOTH the authorized pool id AND the MT uid — a uid-only filter
+    # 403s ("Query must filter by at least one of your authorized resources").
+    scoped = {f["field"]: f["value"] for f in body["filter"]["filters"]}
+    assert body["filter"]["op"] == "AND"
+    assert scoped["resource.compute_pool.id"] == "lfcp-x"
+    assert scoped[confluent_client._MT_UID_DIMENSION] == "mt-uid-123"
     assert body["intervals"] and "/" in body["intervals"][0]
     assert metrics["compute_pool_cfu"] == 1.5
+
+
+def test_mt_metrics_includes_record_rates(monkeypatch):
+    def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002
+        metric = json["aggregations"][0]["metric"]
+        # Every MT record query must be AND-scoped by the authorized pool + uid.
+        fields = {f["field"]: f["value"] for f in json["filter"]["filters"]}
+        assert fields["resource.compute_pool.id"] == "lfcp-x"
+        assert fields[confluent_client._MT_UID_DIMENSION] == "mt-9"
+        value = {"io.confluent.flink/num_records_in": 300,
+                 "io.confluent.flink/num_records_out": 180}.get(metric, 0.25)
+        return _Resp({"data": [{"timestamp": "2026-10-26T10:05:00Z", "value": value}]})
+
+    monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    metrics = client.get_materialized_table_metrics("mt-9")
+
+    assert metrics["compute_pool_cfu"] == 0.25
+    assert metrics["messages_in_per_sec"] == 300 / 60
+    assert metrics["messages_out_per_sec"] == 180 / 60
+
+
+def test_mt_metrics_without_pool_skips_query(monkeypatch):
+    # Without a compute pool to scope to, the MT query would 403 — skip it.
+    calls: list[dict] = []
+    monkeypatch.setattr(confluent_client.httpx, "post", lambda *a, **k: calls.append(1))
+    client = confluent_client.ConfluentClient(settings_obj=_settings(FLINK_COMPUTE_POOL_ID=None))
+    assert client.get_materialized_table_metrics("mt-uid-123") == {}
+    assert calls == []
 
 
 def test_mt_metrics_empty_uid_skips_query(monkeypatch):

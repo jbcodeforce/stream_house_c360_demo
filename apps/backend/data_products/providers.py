@@ -132,13 +132,14 @@ class LiveProvider:
         return "UNKNOWN"
 
     @staticmethod
-    def _mt_uid_for(node, mt_tables: dict[str, dict]) -> str | None:
-        """The materialized table's UID (canonical resource id for the Metrics
-        API), matched by table name = node id/label."""
+    def _mt_entry_for(node, mt_tables: dict[str, dict]) -> dict | None:
+        """The materialized-tables entry for this node, matched by table name =
+        node id/label. Carries the UID (Metrics API resource id) and the
+        defining SQL (spec.query)."""
         for key in (node.id, node.label):
             info = mt_tables.get(key)
-            if info and info.get("uid"):
-                return info["uid"]
+            if info:
+                return info
         return None
 
     def _safe_mt_metrics(self, uid: str) -> dict:
@@ -203,9 +204,12 @@ class LiveProvider:
             if node.statement_name:
                 raw.update(self._safe_statement_metrics(node.statement_name))
         else:
-            uid = self._mt_uid_for(node, mt_tables)
-            if uid:
-                raw.update(self._safe_mt_metrics(uid))
+            entry = self._mt_entry_for(node, mt_tables)
+            if entry:
+                if entry.get("uid"):
+                    raw.update(self._safe_mt_metrics(entry["uid"]))
+                if entry.get("sql"):
+                    raw["sql"] = entry["sql"]
 
         return NodeMetrics(
             node_id=node_id,

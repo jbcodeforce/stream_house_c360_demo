@@ -21,10 +21,11 @@ The Metrics API query shape (host ``api.telemetry.confluent.cloud``, the
 key whose principal has the MetricsViewer role) and the Flink metric descriptor
 names (``io.confluent.flink/pending_records``,
 ``io.confluent.flink/materialized_table_utilization/current_cfus``) are aligned
-with Confluent's docs. Materialized-table metrics are scoped by the MT's UID
-(``_MT_UID_DIMENSION``), the canonical resource id — a ``.name`` filter fails
-the Metrics API's authorized-resource check (403). The UID is read from the
-materialized-tables list (``metadata.uid``).
+with Confluent's docs. Materialized-table metrics are scoped by the compute
+pool id AND the MT's UID (``_MT_UID_DIMENSION``): the principal is authorized on
+the pool, so filtering by the uid alone (or by ``.name``) names no authorized
+resource and fails the Metrics API's authorized-resource check (403). The UID
+is read from the materialized-tables list (``metadata.uid``).
 
 NOTE (verify before real live use): the Flink SQL Statements and
 Materialized-Tables API paths/versions (``.../sql/v1/organizations/{org}/
@@ -85,14 +86,26 @@ _REQUEST_TIMEOUT_SECONDS = 5.0
 _METRICS_API_BASE_URL = "https://api.telemetry.confluent.cloud/v2/metrics/cloud/query"
 
 
-# Metrics API filter field (dimension) that scopes a query to one materialized
-# table. The MT utilization metrics carry the resource type
-# `flink_materialized_table`, whose filterable labels are .name / .uid /
-# .version (confirmed via the Metrics API resource descriptors). Authorization
-# is keyed on the canonical resource id, so the query must filter by .uid — a
-# .name filter fails the "must filter by an authorized resource" check (403).
-# The uid comes from the materialized-tables list (metadata.uid).
+# Metrics API filter field (dimension) that narrows an MT utilization query to
+# one materialized table. The MT utilization metrics carry both the
+# `compute_pool` and `flink_materialized_table` resource types; the latter's
+# filterable labels are .name / .uid / .version (confirmed via the Metrics API
+# resource descriptors). Authorization is on the compute pool, so this uid
+# filter must be AND-ed with resource.compute_pool.id — on its own it fails the
+# "must filter by an authorized resource" check (403). The uid comes from the
+# materialized-tables list (metadata.uid).
 _MT_UID_DIMENSION = "resource.flink_materialized_table.uid"
+
+
+# Records-in/out counters backing messages_in/out_per_sec. They are COUNTER
+# metrics: the Metrics API returns the count accumulated within each granularity
+# interval (PT1M), so the latest point is records-per-minute and a per-second
+# rate divides by the interval length. Like all Flink metrics here they are
+# authorized on the compute pool, so queries AND the pool id with the per-node
+# dimension (statement name or MT uid).
+_RECORDS_IN_METRIC = "io.confluent.flink/num_records_in"
+_RECORDS_OUT_METRIC = "io.confluent.flink/num_records_out"
+_GRANULARITY_SECONDS = 60  # PT1M
 
 
 class ConfluentClientProtocol(Protocol):
@@ -158,7 +171,7 @@ class ConfluentClient:
         return phases
 
     def list_materialized_tables(self) -> dict[str, dict]:
-        """Return ``{name: {"phase", "uid", "version"}}`` for every materialized table.
+        """Return ``{name: {"phase", "uid", "version", "sql"}}`` for every materialized table.
 
         Materialized tables are maintained by a hidden system statement, so they
         do NOT appear in the Flink Statements list — this dedicated API is their
@@ -201,6 +214,10 @@ class ConfluentClient:
                 "phase": status.get("phase"),
                 "uid": (item.get("metadata") or {}).get("uid"),
                 "version": status.get("version"),
+                # The MT's defining SQL (the CREATE ... AS SELECT body), for the
+                # drill-down panel. The MT's DDL statement isn't in the
+                # Statements list, so spec.query is the live source for it.
+                "sql": (item.get("spec") or {}).get("query"),
             }
         return tables
 
@@ -254,19 +271,43 @@ class ConfluentClient:
         latest = max(points, key=lambda p: p.get("timestamp", ""))
         return latest.get("value")
 
+    def _records_rates(
+        self,
+        base_filters: list[tuple[str, str]],
+        api_key: str,
+        api_secret: str,
+        context: str,
+    ) -> dict:
+        """Return ``messages_in_per_sec`` / ``messages_out_per_sec`` from the
+        records-in/out counters over ``base_filters`` (already scoped to an
+        authorized resource — the compute pool AND the per-node dimension). The
+        counter's latest point is records-per-PT1M-interval, so divide by the
+        interval length for a per-second rate. Each query is isolated so one
+        failing metric doesn't drop the other, and the method never raises.
+        """
+        rates: dict = {}
+        for field, metric in (
+            ("messages_in_per_sec", _RECORDS_IN_METRIC),
+            ("messages_out_per_sec", _RECORDS_OUT_METRIC),
+        ):
+            try:
+                value = self._query_latest_value(metric, base_filters, api_key, api_secret)
+                if value is not None:
+                    rates[field] = value / _GRANULARITY_SECONDS
+            except (httpx.HTTPError, ValueError) as exc:
+                _log_metrics_error(exc, f"{metric} {context}")
+        return rates
+
     def get_statement_metrics(self, statement_name: str) -> dict:
         """Return raw metric fields for one statement; any key may be absent.
 
-        Recognized keys: ``pending_records`` (statement-scoped lag) and
-        ``compute_pool_cfu`` (pool-scoped CFUs in use). These two live on
-        different resource dimensions, so they are two separately-scoped
-        queries, each isolated so one failing doesn't drop the other.
-
-        ``messages_in_per_sec``/``messages_out_per_sec`` are intentionally not
-        populated here: the Metrics API exposes cumulative counters
-        (``num_records_in``/``_out``), so a rate needs a delta between two
-        reads — a future iteration can cache the previous read per statement.
-        ``uptime_seconds`` is derived from the statement, not a metric.
+        Recognized keys: ``pending_records`` (statement-scoped lag),
+        ``compute_pool_cfu`` (pool-scoped CFUs in use), and
+        ``messages_in_per_sec``/``messages_out_per_sec`` (from the records-in/out
+        counters, scoped to the pool + statement name). These live on different
+        resource dimensions, so they are separately-scoped queries, each isolated
+        so one failing doesn't drop the others. ``uptime_seconds`` is derived
+        from the statement, not a metric.
 
         Returns ``{}`` if live credentials are not configured. Never raises.
         """
@@ -306,32 +347,55 @@ class ConfluentClient:
         except (httpx.HTTPError, ValueError) as exc:
             _log_metrics_error(exc, f"pool={s.FLINK_COMPUTE_POOL_ID}")
 
+        # Throughput: records-in/out per second, scoped to the authorized pool
+        # AND this statement.
+        metrics.update(
+            self._records_rates(
+                [
+                    ("resource.compute_pool.id", s.FLINK_COMPUTE_POOL_ID),
+                    ("resource.flink_statement.name", statement_name),
+                ],
+                s.CONFLUENT_CLOUD_API_KEY,
+                s.CONFLUENT_CLOUD_API_SECRET,
+                f"statement={statement_name}",
+            )
+        )
+
         return metrics
 
     def get_materialized_table_metrics(self, mt_uid: str) -> dict:
         """Return raw metric fields for one materialized table; keys may be absent.
 
-        Materialized tables bill on their own CFU utilization metrics, scoped by
-        the materialized-table UID (the canonical resource id — a .name filter
-        fails the Metrics API's authorized-resource check). The compute-pool view
-        mixes statement and MT usage, so it is not used here. Recognized key:
-        ``compute_pool_cfu`` (current CFUs the materialized table is consuming).
+        Materialized tables report their own per-table CFU utilization. The
+        query must be scoped by BOTH the compute pool id AND the MT uid: the
+        MetricsViewer principal is authorized on the compute pool, so a uid-only
+        filter names no authorized resource and the API returns 403 ("Query must
+        filter by at least one of your authorized resources"). Adding
+        ``resource.compute_pool.id`` scopes to the authorized pool while the uid
+        narrows to this one table. Recognized keys: ``compute_pool_cfu`` (current
+        CFUs the materialized table is consuming — the per-table ``current_cfus``
+        gauge, not the pool-wide total) and ``messages_in_per_sec`` /
+        ``messages_out_per_sec`` (from the records-in/out counters, same scope).
 
-        Returns ``{}`` if live credentials are not configured, or if ``mt_uid``
-        is empty. Never raises.
+        Returns ``{}`` if live credentials (incl. the compute pool id) are not
+        configured, or if ``mt_uid`` is empty. Never raises.
         """
         s = self._settings
-        if not (s.CONFLUENT_CLOUD_API_KEY and s.CONFLUENT_CLOUD_API_SECRET):
+        if not (s.CONFLUENT_CLOUD_API_KEY and s.CONFLUENT_CLOUD_API_SECRET and s.FLINK_COMPUTE_POOL_ID):
             logger.info("ConfluentClient: Metrics API settings incomplete; skipping MT metrics lookup")
             return {}
         if not mt_uid:
             return {}
 
+        scope = [
+            ("resource.compute_pool.id", s.FLINK_COMPUTE_POOL_ID),
+            (_MT_UID_DIMENSION, mt_uid),
+        ]
         metrics: dict = {}
         try:
             cfu = self._query_latest_value(
                 "io.confluent.flink/materialized_table_utilization/current_cfus",
-                [(_MT_UID_DIMENSION, mt_uid)],
+                scope,
                 s.CONFLUENT_CLOUD_API_KEY,
                 s.CONFLUENT_CLOUD_API_SECRET,
             )
@@ -339,5 +403,15 @@ class ConfluentClient:
                 metrics["compute_pool_cfu"] = cfu
         except (httpx.HTTPError, ValueError) as exc:
             _log_metrics_error(exc, f"materialized_table_uid={mt_uid}")
+
+        # Throughput: records-in/out per second, same pool + MT scope.
+        metrics.update(
+            self._records_rates(
+                scope,
+                s.CONFLUENT_CLOUD_API_KEY,
+                s.CONFLUENT_CLOUD_API_SECRET,
+                f"materialized_table_uid={mt_uid}",
+            )
+        )
 
         return metrics
