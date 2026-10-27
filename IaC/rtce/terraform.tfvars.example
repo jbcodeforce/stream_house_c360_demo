@@ -1,0 +1,27 @@
+# terraform.tfvars.example
+# Copy to terraform.tfvars and fill in real values.
+# Do NOT commit terraform.tfvars to version control.
+#
+# This stack enables the Real-Time Context Engine (Lightning Query API) on the
+# fct_c360_profile table. Apply it AFTER:
+#   1. IaC/ccloud applied (environment + Kafka cluster) — read from
+#      ../ccloud/terraform.tfstate automatically.
+#   2. dbt run — so the fct_c360_profile upsert topic exists.
+# Also requires the RTCE / Lightning Query API Early Access feature to be enabled
+# for your Confluent organization.
+
+# ── Confluent Cloud credentials (OrganizationAdmin Cloud API key) ───────────────
+# Creating a service account, a Global API key, and an RTCE topic are org-level
+# operations — a resource-scoped key returns 401.
+# (or export CONFLUENT_CLOUD_API_KEY / CONFLUENT_CLOUD_API_SECRET instead)
+confluent_cloud_api_key    = "REPLACE_WITH_ORG_ADMIN_API_KEY"
+confluent_cloud_api_secret = "REPLACE_WITH_ORG_ADMIN_API_SECRET"
+
+# ── Must match the Kafka cluster that backs the table ──────────────────────────
+cloud_provider     = "AWS"
+aws_region_primary = "us-west-2"
+prefix             = "j9r-jtbd1"
+
+# ── Optional overrides (defaults shown) ───────────────────────────────────────
+# core_state_path = "../ccloud/terraform.tfstate"
+# profile_topic   = "fct_c360_profile"

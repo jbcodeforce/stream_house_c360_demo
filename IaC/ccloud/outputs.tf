@@ -104,22 +104,3 @@ output "schema_registry_api_key_secret" {
   value       = confluent_api_key.schema-registry-api-key.secret
   sensitive   = true
 }
-
-# ------------------------------------------------------
-# RTCE / Lightning Query API (Global key)
-# ------------------------------------------------------
-output "rtce_lightning_sa_id" {
-  description = "Service account ID that owns the RTCE Lightning Global key"
-  value       = confluent_service_account.rtce_lightning.id
-}
-
-output "rtce_lightning_api_key_id" {
-  description = "Global API key ID for the RTCE Lightning Query API (CONFLUENT_GLOBAL_KEY)"
-  value       = confluent_api_key.rtce_lightning.id
-}
-
-output "rtce_lightning_api_key_secret" {
-  description = "Global API key secret for the RTCE Lightning Query API (CONFLUENT_GLOBAL_SECRET)"
-  value       = confluent_api_key.rtce_lightning.secret
-  sensitive   = true
-}
