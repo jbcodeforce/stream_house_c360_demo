@@ -1,7 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import * as api from '../api/analytics'
 import { ApiError } from '../api/client'
 import type { CustomerProfile, CustomerSearchResponse } from '../types/analytics'
 import CustomerLookup from './CustomerLookup'
@@ -32,60 +31,72 @@ function searchResult(matches: CustomerSearchResponse['matches']): CustomerSearc
   return { source_mode: 'mock', query: 'x', matches }
 }
 
+function renderLookup(
+  search: (name: string) => Promise<CustomerSearchResponse>,
+  getProfile: (id: string) => Promise<CustomerProfile>,
+) {
+  return render(
+    <CustomerLookup title="Customer lookup" subtitle="sub" badge="Test" search={search} getProfile={getProfile} />,
+  )
+}
+
 afterEach(() => vi.restoreAllMocks())
 
 describe('CustomerLookup', () => {
+  it('renders the title and engine badge', () => {
+    renderLookup(vi.fn(), vi.fn())
+    expect(screen.getByText('Customer lookup')).toBeInTheDocument()
+    expect(screen.getByText('Test')).toBeInTheDocument()
+  })
+
   it('auto-loads the profile when exactly one customer matches', async () => {
-    vi.spyOn(api, 'searchCustomers').mockResolvedValue(
+    const search = vi.fn().mockResolvedValue(
       searchResult([
         { customer_id: 'id-thomas', first_name: 'Thomas', last_name: 'Brennan', customer_segment: 'SMB', city: 'Seattle', state: 'WA' },
       ]),
     )
-    const profileSpy = vi.spyOn(api, 'getCustomerProfile').mockResolvedValue(thomas)
+    const getProfile = vi.fn().mockResolvedValue(thomas)
 
-    render(<CustomerLookup />)
+    renderLookup(search, getProfile)
     await userEvent.type(screen.getByLabelText(/customer name/i), 'brennan')
     await userEvent.click(screen.getByRole('button', { name: /search/i }))
 
-    await waitFor(() => expect(profileSpy).toHaveBeenCalledWith('id-thomas'))
+    await waitFor(() => expect(getProfile).toHaveBeenCalledWith('id-thomas'))
     expect(await screen.findByText('Thomas Brennan')).toBeInTheDocument()
-    expect(screen.getByText('$318,400')).toBeInTheDocument() // total balance
-    expect(screen.getByText('512')).toBeInTheDocument() // txn count
+    expect(screen.getByText('$318,400')).toBeInTheDocument()
+    expect(screen.getByText('512')).toBeInTheDocument()
   })
 
   it('shows a picker when multiple customers match and loads the chosen one', async () => {
-    vi.spyOn(api, 'searchCustomers').mockResolvedValue(
+    const search = vi.fn().mockResolvedValue(
       searchResult([
         { customer_id: 'id-a', first_name: 'Linda', last_name: 'Sharma', customer_segment: 'SMB', city: 'Austin', state: 'TX' },
         { customer_id: 'id-thomas', first_name: 'Thomas', last_name: 'Brennan', customer_segment: 'SMB', city: 'Seattle', state: 'WA' },
       ]),
     )
-    const profileSpy = vi.spyOn(api, 'getCustomerProfile').mockResolvedValue(thomas)
+    const getProfile = vi.fn().mockResolvedValue(thomas)
 
-    render(<CustomerLookup />)
+    renderLookup(search, getProfile)
     await userEvent.type(screen.getByLabelText(/customer name/i), 'a')
     await userEvent.click(screen.getByRole('button', { name: /search/i }))
 
-    // Two candidates listed; profile not fetched until one is chosen.
     expect(await screen.findByText('Linda Sharma')).toBeInTheDocument()
-    expect(profileSpy).not.toHaveBeenCalled()
+    expect(getProfile).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByRole('button', { name: /thomas brennan/i }))
-    await waitFor(() => expect(profileSpy).toHaveBeenCalledWith('id-thomas'))
+    await waitFor(() => expect(getProfile).toHaveBeenCalledWith('id-thomas'))
     expect(await screen.findByText('Boomer+')).toBeInTheDocument()
   })
 
   it('shows a no-match message when nothing is found', async () => {
-    vi.spyOn(api, 'searchCustomers').mockResolvedValue(searchResult([]))
-    render(<CustomerLookup />)
+    renderLookup(vi.fn().mockResolvedValue(searchResult([])), vi.fn())
     await userEvent.type(screen.getByLabelText(/customer name/i), 'zzz')
     await userEvent.click(screen.getByRole('button', { name: /search/i }))
     expect(await screen.findByText(/no customers match/i)).toBeInTheDocument()
   })
 
   it('shows an error when the search request fails', async () => {
-    vi.spyOn(api, 'searchCustomers').mockRejectedValue(new ApiError(500, 'search boom'))
-    render(<CustomerLookup />)
+    renderLookup(vi.fn().mockRejectedValue(new ApiError(500, 'search boom')), vi.fn())
     await userEvent.type(screen.getByLabelText(/customer name/i), 'x')
     await userEvent.click(screen.getByRole('button', { name: /search/i }))
     expect(await screen.findByText(/search boom/)).toBeInTheDocument()

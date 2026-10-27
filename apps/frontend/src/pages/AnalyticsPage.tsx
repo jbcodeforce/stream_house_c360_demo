@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { ApiError } from '../api/client'
-import { getC360Analytics } from '../api/analytics'
+import {
+  getC360Analytics,
+  searchCustomers,
+  getCustomerProfile,
+  searchCustomersRtce,
+  getCustomerProfileRtce,
+} from '../api/analytics'
 import { formatCurrency, nf } from '../lib/format'
 import CustomerLookup from '../components/CustomerLookup'
 import type { C360Analytics, CategoryCount, CategoryValue } from '../types/analytics'
@@ -106,7 +112,19 @@ export default function AnalyticsPage() {
         </div>
       )}
 
-      <CustomerLookup />
+      <CustomerLookup
+        title="Customer lookup via Flink snapshot query"
+        badge="Flink Statements API"
+        subtitle={
+          <>
+            Search by name, then the profile is fetched with a{' '}
+            <code>WHERE customer_id = …</code> snapshot query (reads the upsert changelog and
+            collapses it to current state).
+          </>
+        }
+        search={searchCustomers}
+        getProfile={getCustomerProfile}
+      />
 
       {loading && <div className="status-msg">Loading…</div>}
       {error && <div className="status-msg status-msg--error">{error}</div>}
@@ -159,6 +177,20 @@ export default function AnalyticsPage() {
           </div>
         </>
       )}
+
+      <CustomerLookup
+        title="Customer lookup via RTCE"
+        badge="Lightning Query API"
+        subtitle={
+          <>
+            Same search, served by the Real-Time Context Engine over the{' '}
+            <code>fct_c360_profile</code> lightning table — a millisecond point lookup that returns
+            current state directly (no changelog to collapse).
+          </>
+        }
+        search={searchCustomersRtce}
+        getProfile={getCustomerProfileRtce}
+      />
     </div>
   )
 }

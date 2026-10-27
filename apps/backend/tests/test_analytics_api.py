@@ -111,6 +111,28 @@ def test_customer_profile_malformed_id_404(client):
     assert r.status_code == 404
 
 
+# --- RTCE / Lightning endpoints (mock mode mirrors the Flink endpoints) ----
+
+
+def test_rtce_search_by_name(client):
+    r = client.get("/api/v1/analytics/c360-profile/rtce/search", params={"name": "brennan"})
+    assert r.status_code == 200
+    assert [m["customer_id"] for m in r.json()["matches"]] == [_THOMAS_ID]
+
+
+def test_rtce_customer_profile_by_id(client):
+    r = client.get(f"/api/v1/analytics/c360-profile/rtce/customer/{_THOMAS_ID}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["first_name"] == "Thomas"
+    assert body["txn_count"] == 512
+
+
+def test_rtce_customer_profile_unknown_id_404(client):
+    r = client.get("/api/v1/analytics/c360-profile/rtce/customer/00000000-0000-0000-0000-000000000000")
+    assert r.status_code == 404
+
+
 @pytest.fixture(scope="module")
 def live_client():
     """ANALYTICS_DATA_MODE=live with NO Confluent credentials — the live snapshot

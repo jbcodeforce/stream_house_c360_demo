@@ -126,6 +126,18 @@ class Settings(BaseSettings):
     FLINK_CATALOG: str | None = None
     FLINK_DATABASE: str | None = None
 
+    # RTCE / Confluent Lightning Query API (point-lookup serving layer). Used by
+    # the analytics "Customer lookup via RTCE" section in live mode. The endpoint
+    # is https://sql.{CLOUD_REGION}.{CLOUD_PROVIDER}.confluent.cloud/query/v1alpha1;
+    # the request is scoped by catalog_name = env *id* (FLINK_ENV_ID) and
+    # database_name = Kafka cluster *id* (KAFKA_CLUSTER_ID) — IDs, not display
+    # names. Authenticates with the Confluent Cloud API key/secret
+    # (CONFLUENT_CLOUD_API_KEY/SECRET above); the Lightning API has no key of its
+    # own. That key must authenticate the whole organization, or it returns 401.
+    CLOUD_REGION: str | None = None
+    CLOUD_PROVIDER: str | None = None
+    KAFKA_CLUSTER_ID: str | None = None
+
     @model_validator(mode="after")
     def _resolve_cdc_connector(self) -> "Settings":
         """Infer CDC ownership from the DB host when not set explicitly."""
@@ -151,6 +163,11 @@ class Settings(BaseSettings):
             "GRAPH_DATA_MODE": self.GRAPH_DATA_MODE,
             "ANALYTICS_DATA_MODE": self.ANALYTICS_DATA_MODE,
             "FLINK_REST_ENDPOINT": self.FLINK_REST_ENDPOINT or "None",
+            "RTCE_LIGHTNING": (
+                "configured"
+                if (self.CLOUD_REGION and self.KAFKA_CLUSTER_ID and self.CONFLUENT_CLOUD_API_KEY)
+                else "None"
+            ),
         }
 
     def log_summary(self, target_logger: logging.Logger | None = None) -> None:

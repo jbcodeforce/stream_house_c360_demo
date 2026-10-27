@@ -86,3 +86,44 @@ def test_search_customers_live_delegates_to_client(live_mode, monkeypatch):
     assert mode == "live"
     assert rows[0]["first_name"] == "Ada"
     assert "LIKE '%ada%'" in captured["sql"]
+
+
+# --- RTCE / Lightning provider variants -----------------------------------
+
+def test_rtce_search_mock_matches_flink_search(mock_mode):
+    assert providers.search_customers_rtce("sharma") == providers.search_customers("sharma")
+
+
+def test_rtce_profile_mock_by_id(mock_mode):
+    row, mode = providers.get_customer_profile_rtce("00000000-0000-0000-0000-678901234568")
+    assert mode == "mock"
+    assert row is not None and row["first_name"] == "Thomas"
+
+
+def test_rtce_profile_rejects_malformed_id(mock_mode):
+    assert providers.get_customer_profile_rtce("'; DROP TABLE x; --") == (None, "mock")
+
+
+def test_rtce_search_live_delegates_to_lightning(live_mode, monkeypatch):
+    captured = {}
+
+    def fake_query(self, sql, fallback_columns, max_rows):
+        captured["sql"] = sql
+        return [{"customer_id": "c1", "first_name": "Ada", "last_name": "Lovelace"}]
+
+    monkeypatch.setattr(providers.LightningClient, "query", fake_query)
+    rows, mode = providers.search_customers_rtce("ada")
+    assert mode == "live"
+    assert rows[0]["first_name"] == "Ada"
+    assert "LIKE '%ada%'" in captured["sql"]
+
+
+def test_rtce_profile_live_delegates_to_lightning(live_mode, monkeypatch):
+    def fake_query(self, sql, fallback_columns, max_rows):
+        assert "WHERE customer_id = 'abc-123'" in sql
+        return [{"customer_id": "abc-123", "txn_count": 43}]
+
+    monkeypatch.setattr(providers.LightningClient, "query", fake_query)
+    row, mode = providers.get_customer_profile_rtce("abc-123")
+    assert mode == "live"
+    assert row == {"customer_id": "abc-123", "txn_count": 43}

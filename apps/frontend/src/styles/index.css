@@ -184,7 +184,11 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; color: #0f1
   border: 1px solid var(--border); border-radius: 12px; background: #fff;
   padding: 18px; margin-bottom: 24px; box-shadow: 0 1px 2px rgba(15,23,42,.04);
 }
-.lookup-card__title { margin: 0; font-size: 16px; color: #0f172a; }
+.lookup-card__title { margin: 0; font-size: 16px; color: #0f172a; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lookup-badge {
+  font-size: 11px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
+  color: #4338ca; background: #e0e7ff; padding: 2px 8px; border-radius: 6px;
+}
 .lookup-card__sub { margin: 4px 0 14px; font-size: 13px; color: #64748b; }
 .lookup-card__sub code, .profile-card__id {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;

@@ -16,3 +16,16 @@ export function getCustomerProfile(customerId: string): Promise<CustomerProfile>
     `/analytics/c360-profile/customer/${encodeURIComponent(customerId)}`,
   )
 }
+
+// RTCE / Lightning Query API variants (current-state point lookups).
+export function searchCustomersRtce(name: string): Promise<CustomerSearchResponse> {
+  return request<CustomerSearchResponse>(
+    `/analytics/c360-profile/rtce/search?name=${encodeURIComponent(name)}`,
+  )
+}
+
+export function getCustomerProfileRtce(customerId: string): Promise<CustomerProfile> {
+  return request<CustomerProfile>(
+    `/analytics/c360-profile/rtce/customer/${encodeURIComponent(customerId)}`,
+  )
+}

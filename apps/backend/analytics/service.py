@@ -40,8 +40,7 @@ def get_c360_analytics() -> C360Analytics:
     return aggregate(rows, source_mode=source_mode)
 
 
-def search_customers(name: str) -> CustomerSearchResponse:
-    rows, source_mode = providers.search_customers(name)
+def _to_search_response(rows: list[dict], source_mode: str, query: str) -> CustomerSearchResponse:
     matches = [
         CustomerMatch(
             customer_id=str(r.get("customer_id")),
@@ -54,11 +53,30 @@ def search_customers(name: str) -> CustomerSearchResponse:
         for r in rows
         if r.get("customer_id")
     ]
-    return CustomerSearchResponse(source_mode=source_mode, query=name.strip(), matches=matches)
+    return CustomerSearchResponse(source_mode=source_mode, query=query.strip(), matches=matches)
+
+
+def search_customers(name: str) -> CustomerSearchResponse:
+    rows, source_mode = providers.search_customers(name)
+    return _to_search_response(rows, source_mode, name)
+
+
+def search_customers_rtce(name: str) -> CustomerSearchResponse:
+    rows, source_mode = providers.search_customers_rtce(name)
+    return _to_search_response(rows, source_mode, name)
 
 
 def get_customer_profile(customer_id: str) -> CustomerProfile | None:
     row, source_mode = providers.get_customer_profile(customer_id)
+    return _to_profile(row, source_mode)
+
+
+def get_customer_profile_rtce(customer_id: str) -> CustomerProfile | None:
+    row, source_mode = providers.get_customer_profile_rtce(customer_id)
+    return _to_profile(row, source_mode)
+
+
+def _to_profile(row: dict | None, source_mode: str) -> CustomerProfile | None:
     if row is None:
         return None
     return CustomerProfile(

@@ -1,9 +1,17 @@
-import { useState, type FormEvent } from 'react'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { Search } from 'lucide-react'
 import { ApiError } from '../api/client'
-import { searchCustomers, getCustomerProfile } from '../api/analytics'
 import { formatCurrency, nf } from '../lib/format'
-import type { CustomerMatch, CustomerProfile } from '../types/analytics'
+import type { CustomerMatch, CustomerProfile, CustomerSearchResponse } from '../types/analytics'
+
+interface CustomerLookupProps {
+  title: string
+  subtitle: ReactNode
+  /** Short engine label shown as a pill (e.g. "Flink snapshot", "RTCE"). */
+  badge?: string
+  search: (name: string) => Promise<CustomerSearchResponse>
+  getProfile: (customerId: string) => Promise<CustomerProfile>
+}
 
 function fullName(c: { first_name: string | null; last_name: string | null }): string {
   return [c.first_name, c.last_name].filter(Boolean).join(' ') || '(unnamed)'
@@ -49,7 +57,7 @@ function ProfileCard({ profile }: { profile: CustomerProfile }) {
   )
 }
 
-export default function CustomerLookup() {
+export default function CustomerLookup({ title, subtitle, badge, search, getProfile }: CustomerLookupProps) {
   const [query, setQuery] = useState('')
   const [matches, setMatches] = useState<CustomerMatch[] | null>(null)
   const [searching, setSearching] = useState(false)
@@ -66,7 +74,7 @@ export default function CustomerLookup() {
     setProfileError(null)
     setProfileLoading(true)
     try {
-      setProfile(await getCustomerProfile(id))
+      setProfile(await getProfile(id))
     } catch (e) {
       setProfileError(e instanceof ApiError ? e.message : 'Failed to load customer')
     } finally {
@@ -88,7 +96,7 @@ export default function CustomerLookup() {
     setSearching(true)
     setSearchError(null)
     try {
-      const res = await searchCustomers(name)
+      const res = await search(name)
       setMatches(res.matches)
       // One unambiguous hit → go straight to the WHERE customer_id = … query.
       if (res.matches.length === 1) {
@@ -104,11 +112,11 @@ export default function CustomerLookup() {
 
   return (
     <section className="lookup-card">
-      <h2 className="lookup-card__title">Customer lookup via Flink snapshot query</h2>
-      <p className="lookup-card__sub">
-        Search by name, then the profile is fetched with a{' '}
-        <code>WHERE customer_id = …</code> snapshot query.
-      </p>
+      <h2 className="lookup-card__title">
+        {title}
+        {badge && <span className="lookup-badge">{badge}</span>}
+      </h2>
+      <p className="lookup-card__sub">{subtitle}</p>
 
       <form className="lookup-form" onSubmit={onSearch}>
         <label className="lookup-form__field">

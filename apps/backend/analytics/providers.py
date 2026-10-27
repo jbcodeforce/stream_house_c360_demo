@@ -14,6 +14,7 @@ import re
 
 from analytics import mock_data
 from analytics.flink_snapshot import FlinkSnapshotClient
+from analytics.lightning_client import LightningClient
 
 logger = logging.getLogger(__name__)
 
@@ -105,12 +106,7 @@ def search_customers(name: str) -> tuple[list[dict], str]:
     if not needle:
         return [], mode
     if mode == "mock":
-        matches = [
-            r
-            for r in mock_data.PROFILE_SNAPSHOT
-            if needle in f"{r.get('first_name', '')} {r.get('last_name', '')}".lower()
-        ][:_SEARCH_LIMIT]
-        return matches, mode
+        return _mock_search(needle), mode
     rows = FlinkSnapshotClient().run(
         _search_sql(needle), max_rows=_SEARCH_LIMIT, changelog_key="customer_id"
     )
@@ -127,7 +123,49 @@ def get_customer_profile(customer_id: str) -> tuple[dict | None, str]:
     if not _CUSTOMER_ID_RE.match(cid):
         return None, mode
     if mode == "mock":
-        row = next((r for r in mock_data.PROFILE_SNAPSHOT if r.get("customer_id") == cid), None)
-        return row, mode
+        return _mock_profile(cid), mode
     rows = FlinkSnapshotClient().run(_profile_sql(cid), max_rows=1, changelog_key="customer_id")
     return (rows[0] if rows else None), mode
+
+
+# --- RTCE / Lightning Query API variants ---------------------------------
+#
+# Same name search + by-id profile, but served by the Lightning point-lookup API
+# (current state directly — no changelog collapse). Mock mode reuses the same
+# fixture, so both lookup sections behave identically with no infra.
+
+
+def search_customers_rtce(name: str) -> tuple[list[dict], str]:
+    """By-name search via the Lightning Query API (``WHERE … LIKE``)."""
+    mode = _mode()
+    needle = name.strip().lower()
+    if not needle:
+        return [], mode
+    if mode == "mock":
+        return _mock_search(needle), mode
+    rows = LightningClient().query(_search_sql(needle), _SEARCH_COLUMNS, max_rows=_SEARCH_LIMIT)
+    return rows, mode
+
+
+def get_customer_profile_rtce(customer_id: str) -> tuple[dict | None, str]:
+    """One customer's current-state profile via a Lightning point lookup."""
+    mode = _mode()
+    cid = (customer_id or "").strip()
+    if not _CUSTOMER_ID_RE.match(cid):
+        return None, mode
+    if mode == "mock":
+        return _mock_profile(cid), mode
+    rows = LightningClient().query(_profile_sql(cid), _PROFILE_COLUMNS, max_rows=1)
+    return (rows[0] if rows else None), mode
+
+
+def _mock_search(needle: str) -> list[dict]:
+    return [
+        r
+        for r in mock_data.PROFILE_SNAPSHOT
+        if needle in f"{r.get('first_name', '')} {r.get('last_name', '')}".lower()
+    ][:_SEARCH_LIMIT]
+
+
+def _mock_profile(cid: str) -> dict | None:
+    return next((r for r in mock_data.PROFILE_SNAPSHOT if r.get("customer_id") == cid), None)
