@@ -32,6 +32,18 @@ logger = logging.getLogger(__name__)
 
 _REQUEST_TIMEOUT_SECONDS = 5.0
 
+# Settings required for a live Lightning query; _missing_settings() names the
+# unset ones so a misconfiguration (typically an empty CONFLUENT_GLOBAL_KEY) is
+# actionable in the logs.
+_CONFIG_FIELDS = (
+    "CLOUD_REGION",
+    "CLOUD_PROVIDER",
+    "FLINK_ENV_ID",
+    "KAFKA_CLUSTER_ID",
+    "CONFLUENT_GLOBAL_KEY",
+    "CONFLUENT_GLOBAL_SECRET",
+)
+
 # A 401/403 from the Lightning Query API almost always means the Confluent Cloud
 # API key is not organization-scoped: the Lightning/SQL query endpoint requires a
 # Cloud API key that authenticates the whole organization, not a cluster-,
@@ -61,16 +73,12 @@ class LightningClient:
     def __init__(self, settings_obj: config.Settings | None = None) -> None:
         self._settings = settings_obj if settings_obj is not None else config.settings
 
+    def _missing_settings(self) -> list[str]:
+        """Names of the required Lightning settings that are unset/empty."""
+        return [f for f in _CONFIG_FIELDS if not getattr(self._settings, f, None)]
+
     def _configured(self) -> bool:
-        s = self._settings
-        return bool(
-            s.CLOUD_REGION
-            and s.CLOUD_PROVIDER
-            and s.FLINK_ENV_ID
-            and s.KAFKA_CLUSTER_ID
-            and s.CONFLUENT_GLOBAL_KEY
-            and s.CONFLUENT_GLOBAL_SECRET
-        )
+        return not self._missing_settings()
 
     def _endpoint(self) -> str:
         s = self._settings
@@ -83,8 +91,14 @@ class LightningClient:
         ``fallback_columns`` (the columns the SELECT requested, in order).
         Returns ``[]`` when credentials are incomplete or on any failure.
         """
-        if not self._configured():
-            logger.info("LightningClient: settings incomplete; skipping Lightning query")
+        missing = self._missing_settings()
+        if missing:
+            logger.warning(
+                "LightningClient: skipping Lightning query — these RTCE settings are unset: %s. "
+                "(CONFLUENT_GLOBAL_KEY/SECRET is the GLOBAL API key from "
+                "IaC/ccloud/lightning.tf — distinct from the Flink/Metrics keys.)",
+                ", ".join(missing),
+            )
             return []
 
         s = self._settings
