@@ -21,15 +21,22 @@ logger = logging.getLogger("c360.main")
 
 
 def _configure_logging() -> None:
-    """Make the ``c360.*`` traces visible under uvicorn (which leaves root alone)."""
-    c360 = logging.getLogger("c360")
-    c360.setLevel(logging.INFO)
-    if not c360.handlers:
-        handler = logging.StreamHandler()
-        handler.setFormatter(
-            logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
-        )
-        c360.addHandler(handler)
+    """Make the app's own traces visible under uvicorn (which leaves root alone).
+
+    Covers ``c360.*`` plus the package loggers that use ``__name__`` — notably
+    ``analytics.*`` (Flink snapshot / Lightning clients) and ``data_products.*``
+    — so their INFO traces and WARNING diagnostics (e.g. which Flink setting is
+    missing, or a Flink/Lightning API error body) actually reach the console.
+    """
+    handler = logging.StreamHandler()
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    )
+    for name in ("c360", "analytics", "data_products"):
+        log = logging.getLogger(name)
+        log.setLevel(logging.INFO)
+        if not any(isinstance(h, logging.StreamHandler) for h in log.handlers):
+            log.addHandler(handler)
 
 
 _configure_logging()

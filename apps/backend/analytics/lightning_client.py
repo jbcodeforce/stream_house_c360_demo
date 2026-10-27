@@ -8,12 +8,12 @@ page → delete) and no upsert changelog to collapse, because Lightning already
 serves current state.
 
 Modeled on the reference client in griga23/inventory-demo-streamhouse
-(``storefront-app/lightning_client.py``). The request is HTTP Basic auth with
-the Confluent Cloud API key/secret (``CONFLUENT_CLOUD_API_KEY``/``SECRET`` — the
-Lightning API has no key of its own) and a body scoped by ``catalog_name`` =
-environment *id* and ``database_name`` = Kafka cluster *id* (IDs, not the
-display names the Flink SQL Statements API uses). Note the key must authenticate
-the whole organization, or the API returns 401.
+(``storefront-app/lightning_client.py``). The request is HTTP Basic auth with a
+dedicated *Global* resource API key (``CONFLUENT_GLOBAL_KEY``/``SECRET``,
+provisioned by ``IaC/ccloud/lightning.tf``) and a body scoped by
+``catalog_name`` = environment *id* and ``database_name`` = Kafka cluster *id*
+(IDs, not the display names the Flink SQL Statements API uses). The key must be
+a Global key that authenticates the whole organization, or the API returns 401.
 
 Best-effort like the other analytics clients: missing credentials, a non-2xx
 response, or an unparseable body all resolve to ``[]`` — it never raises.
@@ -37,8 +37,9 @@ _REQUEST_TIMEOUT_SECONDS = 5.0
 # Cloud API key that authenticates the whole organization, not a cluster-,
 # environment-, Flink-, or Metrics-scoped key.
 _AUTH_ERROR_HINT = (
-    " | 401/403: the Lightning Query API needs an ORG-SCOPED Confluent Cloud API "
-    "key (CONFLUENT_CLOUD_API_KEY/SECRET that authenticates the whole organization)."
+    " | 401/403: the Lightning Query API needs a GLOBAL resource API key "
+    "(CONFLUENT_GLOBAL_KEY/SECRET that authenticates the whole organization — "
+    "provisioned by IaC/ccloud/lightning.tf)."
 )
 
 
@@ -67,8 +68,8 @@ class LightningClient:
             and s.CLOUD_PROVIDER
             and s.FLINK_ENV_ID
             and s.KAFKA_CLUSTER_ID
-            and s.CONFLUENT_CLOUD_API_KEY
-            and s.CONFLUENT_CLOUD_API_SECRET
+            and s.CONFLUENT_GLOBAL_KEY
+            and s.CONFLUENT_GLOBAL_SECRET
         )
 
     def _endpoint(self) -> str:
@@ -98,7 +99,7 @@ class LightningClient:
             response = httpx.post(
                 self._endpoint(),
                 json=body,
-                auth=(s.CONFLUENT_CLOUD_API_KEY, s.CONFLUENT_CLOUD_API_SECRET),
+                auth=(s.CONFLUENT_GLOBAL_KEY, s.CONFLUENT_GLOBAL_SECRET),
                 timeout=_REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()

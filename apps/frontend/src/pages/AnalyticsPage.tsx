@@ -8,7 +8,7 @@ import {
   searchCustomersRtce,
   getCustomerProfileRtce,
 } from '../api/analytics'
-import { formatCurrency, nf } from '../lib/format'
+import { formatCurrency, formatMs, nf } from '../lib/format'
 import CustomerLookup from '../components/CustomerLookup'
 import type { C360Analytics, CategoryCount, CategoryValue } from '../types/analytics'
 
@@ -103,15 +103,6 @@ export default function AnalyticsPage() {
         </button>
       </div>
 
-      {data && (
-        <div className="analytics-meta">
-          <span className={`source-pill source-pill--${data.source_mode}`}>
-            {data.source_mode === 'live' ? 'Live snapshot' : 'Mock snapshot'}
-          </span>
-          {generatedAt && <span className="analytics-meta__ts">Generated {generatedAt}</span>}
-        </div>
-      )}
-
       <CustomerLookup
         title="Customer lookup via Flink snapshot query"
         badge="Flink Statements API"
@@ -126,8 +117,25 @@ export default function AnalyticsPage() {
         getProfile={getCustomerProfile}
       />
 
-      {loading && <div className="status-msg">Loading…</div>}
-      {error && <div className="status-msg status-msg--error">{error}</div>}
+      <section className="profile-dashboard">
+        <h2 className="profile-dashboard__title">
+          <code>fct_c360_profile</code> — profile overview
+        </h2>
+
+        {data && (
+          <div className="analytics-meta">
+            <span className={`source-pill source-pill--${data.source_mode}`}>
+              {data.source_mode === 'live' ? 'Live snapshot' : 'Mock snapshot'}
+            </span>
+            <span className="query-timer" title="Backend-measured snapshot query time">
+              ⏱ Snapshot query {formatMs(data.query_ms)}
+            </span>
+            {generatedAt && <span className="analytics-meta__ts">Generated {generatedAt}</span>}
+          </div>
+        )}
+
+        {loading && <div className="status-msg">Loading…</div>}
+        {error && <div className="status-msg status-msg--error">{error}</div>}
 
       {!loading && !error && data && data.row_count === 0 && (
         <div className="status-msg">
@@ -177,6 +185,7 @@ export default function AnalyticsPage() {
           </div>
         </>
       )}
+      </section>
 
       <CustomerLookup
         title="Customer lookup via RTCE"

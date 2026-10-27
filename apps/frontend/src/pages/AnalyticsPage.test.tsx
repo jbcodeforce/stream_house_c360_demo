@@ -10,6 +10,7 @@ import AnalyticsPage from './AnalyticsPage'
 const sample: C360Analytics = {
   source_mode: 'mock',
   generated_at: '2026-10-26T12:00:00Z',
+  query_ms: 12.3,
   row_count: 10,
   total_customers: 10,
   total_accounts: 31,
@@ -60,6 +61,12 @@ describe('AnalyticsPage', () => {
     vi.spyOn(api, 'getC360Analytics').mockResolvedValue(sample)
     renderPage()
     expect(await screen.findByText(/mock snapshot/i)).toBeInTheDocument()
+  })
+
+  it('shows the backend-measured snapshot query time', async () => {
+    vi.spyOn(api, 'getC360Analytics').mockResolvedValue(sample)
+    renderPage()
+    expect(await screen.findByText(/snapshot query 12 ms/i)).toBeInTheDocument()
   })
 
   it('shows an empty state when the snapshot has no rows', async () => {

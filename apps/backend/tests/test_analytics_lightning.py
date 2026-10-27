@@ -15,8 +15,8 @@ _SETTINGS = SimpleNamespace(
     CLOUD_PROVIDER="aws",
     FLINK_ENV_ID="env-abc",
     KAFKA_CLUSTER_ID="lkc-xyz",
-    CONFLUENT_CLOUD_API_KEY="cloud-k",
-    CONFLUENT_CLOUD_API_SECRET="cloud-s",
+    CONFLUENT_GLOBAL_KEY="global-k",
+    CONFLUENT_GLOBAL_SECRET="global-s",
 )
 
 _SEARCH_COLS = ("customer_id", "first_name", "last_name")
@@ -46,7 +46,7 @@ def test_endpoint_and_body_shape(monkeypatch):
     LightningClient(_SETTINGS).query("SELECT 1", _SEARCH_COLS, max_rows=50)
 
     assert captured["url"] == "https://sql.us-west-2.aws.confluent.cloud/query/v1alpha1"
-    assert captured["auth"] == ("cloud-k", "cloud-s")  # Confluent Cloud API key/secret
+    assert captured["auth"] == ("global-k", "global-s")  # Global resource key/secret
     assert captured["json"]["catalog_name"] == "env-abc"   # env *id*, not display name
     assert captured["json"]["database_name"] == "lkc-xyz"  # cluster *id*
     assert captured["json"]["options"] == {"max_result_rows": 50, "result_format": "JSON"}
@@ -85,8 +85,8 @@ def test_empty_result_returns_empty(monkeypatch):
 
 
 def test_unconfigured_returns_empty_without_calling(monkeypatch):
-    # No Confluent Cloud key available → unconfigured, no HTTP call.
-    settings = SimpleNamespace(**{**_SETTINGS.__dict__, "CONFLUENT_CLOUD_API_KEY": None})
+    # No Global key available → unconfigured, no HTTP call.
+    settings = SimpleNamespace(**{**_SETTINGS.__dict__, "CONFLUENT_GLOBAL_KEY": None})
 
     def boom(*a, **k):  # pragma: no cover - must not be called
         raise AssertionError("httpx.post should not be called when unconfigured")

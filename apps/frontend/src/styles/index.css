@@ -138,6 +138,31 @@ body { margin: 0; font-family: system-ui, -apple-system, sans-serif; color: #0f1
 .source-pill--live { background: #dcfce7; color: #15803d; }
 .analytics-meta__ts { color: #94a3b8; font-size: 12px; }
 
+/* Query timer */
+.query-timer {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+  color: #0369a1; background: #e0f2fe; padding: 3px 10px; border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.query-timer--card { margin: 8px 0 14px; }
+
+/* fct_c360_profile overview — the middle dashboard, set apart by a blue border */
+.profile-dashboard {
+  border: 2px solid var(--accent);
+  border-radius: 14px;
+  padding: 20px;
+  margin: 24px 0;
+  background: #f8faff;
+}
+.profile-dashboard__title {
+  margin: 0 0 16px; font-size: 15px; font-weight: 600; color: var(--accent);
+  display: flex; align-items: center; gap: 8px;
+}
+.profile-dashboard__title code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px;
+  background: #e0e7ff; padding: 2px 7px; border-radius: 6px;
+}
+
 .stat-grid {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 14px; margin-bottom: 24px;

@@ -27,6 +27,11 @@ def client():
     env_patch = patch.dict("os.environ", {
         "SINK": "kafka",
         "ANALYTICS_DATA_MODE": "mock",
+        # Point at a nonexistent env file so the repo's real .env (which may set
+        # KAFKA_SEED_ON_START etc. and make startup attempt a real connection) is
+        # never loaded — this suite must exercise the mock path only.
+        "ENV_CONFIG_FILE": "/nonexistent/.env.test-mock",
+        "KAFKA_SEED_ON_START": "false",
         "KAFKA_BOOTSTRAP_SERVERS": "mock:9092",
         "SCHEMA_REGISTRY_URL": "http://mock-sr",
         "SCHEMA_REGISTRY_API_KEY": "key",
@@ -62,6 +67,17 @@ def test_c360_profile_has_all_distributions(client):
     for key in ("by_segment", "by_generation", "by_gender", "by_country", "balance_by_segment"):
         assert isinstance(body[key], list) and body[key]
     assert body["generated_at"].endswith("Z")
+
+
+def test_query_ms_present_on_payloads(client):
+    agg = client.get("/api/v1/analytics/c360-profile").json()
+    assert "query_ms" in agg and isinstance(agg["query_ms"], (int, float)) and agg["query_ms"] >= 0
+
+    search = client.get("/api/v1/analytics/c360-profile/search", params={"name": "brennan"}).json()
+    assert search["query_ms"] >= 0
+
+    prof = client.get(f"/api/v1/analytics/c360-profile/customer/{_THOMAS_ID}").json()
+    assert prof["query_ms"] >= 0
 
 
 # --- Customer lookup (by-name search + by-id profile) ---------------------

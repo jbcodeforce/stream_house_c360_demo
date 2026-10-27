@@ -7,6 +7,7 @@ import CustomerLookup from './CustomerLookup'
 
 const thomas: CustomerProfile = {
   source_mode: 'mock',
+  query_ms: 7.4,
   customer_id: 'id-thomas',
   first_name: 'Thomas',
   last_name: 'Brennan',
@@ -28,7 +29,7 @@ const thomas: CustomerProfile = {
 }
 
 function searchResult(matches: CustomerSearchResponse['matches']): CustomerSearchResponse {
-  return { source_mode: 'mock', query: 'x', matches }
+  return { source_mode: 'mock', query: 'x', matches, query_ms: 3.2 }
 }
 
 function renderLookup(
@@ -65,6 +66,9 @@ describe('CustomerLookup', () => {
     expect(await screen.findByText('Thomas Brennan')).toBeInTheDocument()
     expect(screen.getByText('$318,400')).toBeInTheDocument()
     expect(screen.getByText('512')).toBeInTheDocument()
+    // Query timers: search time and the point-lookup time.
+    expect(screen.getByText(/search 3.2 ms/i)).toBeInTheDocument()
+    expect(screen.getByText(/lookup 7.4 ms/i)).toBeInTheDocument()
   })
 
   it('shows a picker when multiple customers match and loads the chosen one', async () => {

@@ -17,6 +17,7 @@ export interface DataQuality {
 export interface C360Analytics {
   source_mode: string
   generated_at: string
+  query_ms: number
   row_count: number
 
   total_customers: number
@@ -50,10 +51,12 @@ export interface CustomerSearchResponse {
   source_mode: string
   query: string
   matches: CustomerMatch[]
+  query_ms: number
 }
 
 export interface CustomerProfile {
   source_mode: string
+  query_ms: number
   customer_id: string
   first_name: string | null
   last_name: string | null

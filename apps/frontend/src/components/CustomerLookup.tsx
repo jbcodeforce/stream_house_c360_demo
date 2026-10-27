@@ -1,7 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Search } from 'lucide-react'
 import { ApiError } from '../api/client'
-import { formatCurrency, nf } from '../lib/format'
+import { formatCurrency, formatMs, nf } from '../lib/format'
 import type { CustomerMatch, CustomerProfile, CustomerSearchResponse } from '../types/analytics'
 
 interface CustomerLookupProps {
@@ -37,6 +37,9 @@ function ProfileCard({ profile }: { profile: CustomerProfile }) {
         )}
       </div>
       <code className="profile-card__id">customer_id = {profile.customer_id}</code>
+      <div className="query-timer query-timer--card" title="Backend-measured lookup query time">
+        ⏱ Lookup {formatMs(profile.query_ms)}
+      </div>
       <dl className="profile-rows">
         <MetricRow label="Generation" value={profile.generation_segment ?? '—'} />
         <MetricRow label="Age" value={profile.age_years != null ? `${profile.age_years} yrs` : '—'} />
@@ -60,6 +63,7 @@ function ProfileCard({ profile }: { profile: CustomerProfile }) {
 export default function CustomerLookup({ title, subtitle, badge, search, getProfile }: CustomerLookupProps) {
   const [query, setQuery] = useState('')
   const [matches, setMatches] = useState<CustomerMatch[] | null>(null)
+  const [searchMs, setSearchMs] = useState<number | null>(null)
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
 
@@ -90,6 +94,7 @@ export default function CustomerLookup({ title, subtitle, badge, search, getProf
     setSelectedId(null)
     if (!name) {
       setMatches(null)
+      setSearchMs(null)
       setSearchError(null)
       return
     }
@@ -98,12 +103,14 @@ export default function CustomerLookup({ title, subtitle, badge, search, getProf
     try {
       const res = await search(name)
       setMatches(res.matches)
+      setSearchMs(res.query_ms)
       // One unambiguous hit → go straight to the WHERE customer_id = … query.
       if (res.matches.length === 1) {
         await selectCustomer(res.matches[0].customer_id)
       }
     } catch (err) {
       setMatches(null)
+      setSearchMs(null)
       setSearchError(err instanceof ApiError ? err.message : 'Search failed')
     } finally {
       setSearching(false)
@@ -135,6 +142,12 @@ export default function CustomerLookup({ title, subtitle, badge, search, getProf
 
       {searchError && <div className="status-msg status-msg--error">{searchError}</div>}
       {searching && <div className="status-msg">Searching…</div>}
+
+      {!searching && searchMs !== null && matches !== null && (
+        <div className="query-timer" title="Backend-measured search query time">
+          ⏱ Search {formatMs(searchMs)} · {matches.length} match{matches.length === 1 ? '' : 'es'}
+        </div>
+      )}
 
       {!searching && matches !== null && matches.length === 0 && (
         <div className="status-msg">No customers match “{query.trim()}”.</div>

@@ -45,6 +45,8 @@ class C360Analytics(BaseModel):
     source_mode: str
     generated_at: str
     row_count: int
+    # Wall-clock time the snapshot query itself took (backend-measured), ms.
+    query_ms: float = 0.0
 
     # Headline totals
     total_customers: int
@@ -84,12 +86,16 @@ class CustomerSearchResponse(BaseModel):
     source_mode: str
     query: str
     matches: list[CustomerMatch]
+    # Wall-clock time the search query took (backend-measured), ms.
+    query_ms: float = 0.0
 
 
 class CustomerProfile(BaseModel):
     """Per-customer metrics from a ``WHERE customer_id = …`` snapshot query."""
 
     source_mode: str
+    # Wall-clock time the lookup query took (backend-measured), ms.
+    query_ms: float = 0.0
     customer_id: str
     first_name: str | None = None
     last_name: str | None = None

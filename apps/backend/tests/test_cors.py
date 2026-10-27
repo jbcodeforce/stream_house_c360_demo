@@ -35,6 +35,10 @@ def _reset_modules() -> None:
 def client():
     env_patch = patch.dict("os.environ", {
         "SINK": "kafka",
+        # Isolate from the repo's real .env so app startup never attempts a real
+        # connection (it may point at live/remote infra or enable seeding).
+        "ENV_CONFIG_FILE": "/nonexistent/.env.test",
+        "KAFKA_SEED_ON_START": "false",
         "KAFKA_BOOTSTRAP_SERVERS": "mock:9092",
         "SCHEMA_REGISTRY_URL": "http://mock-sr",
         "SCHEMA_REGISTRY_API_KEY": "key",

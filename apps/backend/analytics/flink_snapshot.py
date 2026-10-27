@@ -64,6 +64,36 @@ _OP_UPDATE_BEFORE = 1
 _OP_UPDATE_AFTER = 2
 _OP_DELETE = 3
 
+# Settings required for a live snapshot query; _missing_settings() names the
+# unset ones so a misconfiguration is actionable in the logs.
+_CONFIG_FIELDS = (
+    "FLINK_REST_ENDPOINT",
+    "FLINK_API_KEY",
+    "FLINK_API_SECRET",
+    "FLINK_ORG_ID",
+    "FLINK_ENV_ID",
+    "FLINK_COMPUTE_POOL_ID",
+    "FLINK_CATALOG",
+    "FLINK_DATABASE",
+)
+
+# A 401/403 from the Flink SQL Statements API is an auth/role problem; a 404
+# usually means the org/environment path or catalog/database is wrong.
+_AUTH_ERROR_HINT = (
+    " | 401/403: the FLINK_API_KEY lacks access to this environment/compute pool. "
+    "404: check FLINK_ORG_ID / FLINK_ENV_ID in the URL and FLINK_CATALOG / FLINK_DATABASE."
+)
+
+
+def _log_snapshot_error(exc: httpx.HTTPStatusError, context: str) -> None:
+    """Surface a Flink Statements API failure with its status + response body
+    (the body names the real reason: a role problem, a bad path, an unknown
+    catalog/database, a SQL error) instead of a bare traceback."""
+    status = exc.response.status_code
+    body = exc.response.text[:800]
+    hint = _AUTH_ERROR_HINT if status in (401, 403, 404) else ""
+    logger.warning("FlinkSnapshotClient: Flink API %s for %s: %s%s", status, context, body, hint)
+
 # Columns pulled from the snapshot — only what the aggregator reads (plus the
 # changelog key), so the result set stays narrow even though the table is wider.
 _SNAPSHOT_COLUMNS = (
@@ -114,18 +144,12 @@ class FlinkSnapshotClient:
     def __init__(self, settings_obj: config.Settings | None = None) -> None:
         self._settings = settings_obj if settings_obj is not None else config.settings
 
+    def _missing_settings(self) -> list[str]:
+        """Names of the required Flink settings that are unset/empty."""
+        return [f for f in _CONFIG_FIELDS if not getattr(self._settings, f, None)]
+
     def _configured(self) -> bool:
-        s = self._settings
-        return bool(
-            s.FLINK_REST_ENDPOINT
-            and s.FLINK_API_KEY
-            and s.FLINK_API_SECRET
-            and s.FLINK_ORG_ID
-            and s.FLINK_ENV_ID
-            and s.FLINK_COMPUTE_POOL_ID
-            and s.FLINK_CATALOG
-            and s.FLINK_DATABASE
-        )
+        return not self._missing_settings()
 
     def _base_url(self) -> str:
         s = self._settings
@@ -155,14 +179,23 @@ class FlinkSnapshotClient:
         returned. Returns ``[]`` when credentials are incomplete or on any
         failure — never raises.
         """
-        if not self._configured():
-            logger.info("FlinkSnapshotClient: Flink settings incomplete; skipping snapshot query")
+        missing = self._missing_settings()
+        if missing:
+            logger.warning(
+                "FlinkSnapshotClient: skipping snapshot query — these Flink settings are "
+                "unset: %s. (The analytics dashboard needs ANALYTICS_DATA_MODE=live AND all "
+                "FLINK_* settings incl. FLINK_CATALOG/FLINK_DATABASE; GRAPH_DATA_MODE drives "
+                "the Data Products page, not this one.)",
+                ", ".join(missing),
+            )
             return []
 
         s = self._settings
         auth = (s.FLINK_API_KEY, s.FLINK_API_SECRET)
         name = f"c360-analytics-snapshot-{uuid.uuid4().hex[:12]}"
         statement_url = f"{self._base_url()}/{name}"
+        context = f"catalog={s.FLINK_CATALOG} database={s.FLINK_DATABASE} pool={s.FLINK_COMPUTE_POOL_ID}"
+        logger.info("FlinkSnapshotClient: running snapshot query (%s): %s", context, sql)
 
         try:
             with httpx.Client(auth=auth, timeout=_REQUEST_TIMEOUT_SECONDS) as http:
@@ -172,14 +205,21 @@ class FlinkSnapshotClient:
                     items = self._collect_changelog(http, statement_url, columns)
                 finally:
                     self._delete(http, statement_url)
-        except (httpx.HTTPError, ValueError, KeyError):
-            logger.warning("FlinkSnapshotClient: snapshot query failed", exc_info=True)
+        except httpx.HTTPStatusError as exc:
+            _log_snapshot_error(exc, context)
+            return []
+        except (httpx.HTTPError, ValueError, KeyError) as exc:
+            logger.warning("FlinkSnapshotClient: snapshot query failed (%s): %s", context, exc, exc_info=True)
             return []
 
         if changelog_key:
             rows = collapse_changelog(items, changelog_key)
         else:
             rows = [row for op, row in items if op != _OP_UPDATE_BEFORE]
+        logger.info(
+            "FlinkSnapshotClient: snapshot query returned %d changelog rows → %d after collapse",
+            len(items), len(rows),
+        )
         return rows[:max_rows]
 
     def _create(self, http: httpx.Client, name: str, sql: str) -> None:

@@ -7,6 +7,10 @@ by-name search then fetches one profile via a ``WHERE customer_id = …`` query.
 
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+from typing import TypeVar
+
 from analytics import providers
 from analytics.aggregate import aggregate
 from analytics.models import (
@@ -15,6 +19,19 @@ from analytics.models import (
     CustomerProfile,
     CustomerSearchResponse,
 )
+
+_T = TypeVar("_T")
+
+
+def _timed(call: Callable[[], _T]) -> tuple[_T, float]:
+    """Run ``call`` and return ``(result, elapsed_ms)``.
+
+    Times only the query itself (the provider call that hits Confluent), not any
+    downstream Python work, so the number the UI shows is the query's own latency.
+    """
+    start = time.perf_counter()
+    result = call()
+    return result, round((time.perf_counter() - start) * 1000, 1)
 
 
 def _to_int(value: object) -> int | None:
@@ -36,11 +53,13 @@ def _to_float(value: object) -> float:
 
 
 def get_c360_analytics() -> C360Analytics:
-    rows, source_mode = providers.get_rows()
-    return aggregate(rows, source_mode=source_mode)
+    (rows, source_mode), query_ms = _timed(providers.get_rows)
+    return aggregate(rows, source_mode=source_mode, query_ms=query_ms)
 
 
-def _to_search_response(rows: list[dict], source_mode: str, query: str) -> CustomerSearchResponse:
+def _to_search_response(
+    rows: list[dict], source_mode: str, query: str, query_ms: float
+) -> CustomerSearchResponse:
     matches = [
         CustomerMatch(
             customer_id=str(r.get("customer_id")),
@@ -53,34 +72,37 @@ def _to_search_response(rows: list[dict], source_mode: str, query: str) -> Custo
         for r in rows
         if r.get("customer_id")
     ]
-    return CustomerSearchResponse(source_mode=source_mode, query=query.strip(), matches=matches)
+    return CustomerSearchResponse(
+        source_mode=source_mode, query=query.strip(), matches=matches, query_ms=query_ms
+    )
 
 
 def search_customers(name: str) -> CustomerSearchResponse:
-    rows, source_mode = providers.search_customers(name)
-    return _to_search_response(rows, source_mode, name)
+    (rows, source_mode), query_ms = _timed(lambda: providers.search_customers(name))
+    return _to_search_response(rows, source_mode, name, query_ms)
 
 
 def search_customers_rtce(name: str) -> CustomerSearchResponse:
-    rows, source_mode = providers.search_customers_rtce(name)
-    return _to_search_response(rows, source_mode, name)
+    (rows, source_mode), query_ms = _timed(lambda: providers.search_customers_rtce(name))
+    return _to_search_response(rows, source_mode, name, query_ms)
 
 
 def get_customer_profile(customer_id: str) -> CustomerProfile | None:
-    row, source_mode = providers.get_customer_profile(customer_id)
-    return _to_profile(row, source_mode)
+    (row, source_mode), query_ms = _timed(lambda: providers.get_customer_profile(customer_id))
+    return _to_profile(row, source_mode, query_ms)
 
 
 def get_customer_profile_rtce(customer_id: str) -> CustomerProfile | None:
-    row, source_mode = providers.get_customer_profile_rtce(customer_id)
-    return _to_profile(row, source_mode)
+    (row, source_mode), query_ms = _timed(lambda: providers.get_customer_profile_rtce(customer_id))
+    return _to_profile(row, source_mode, query_ms)
 
 
-def _to_profile(row: dict | None, source_mode: str) -> CustomerProfile | None:
+def _to_profile(row: dict | None, source_mode: str, query_ms: float) -> CustomerProfile | None:
     if row is None:
         return None
     return CustomerProfile(
         source_mode=source_mode,
+        query_ms=query_ms,
         customer_id=str(row.get("customer_id")),
         first_name=row.get("first_name"),
         last_name=row.get("last_name"),

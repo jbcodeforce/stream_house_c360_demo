@@ -131,12 +131,15 @@ class Settings(BaseSettings):
     # is https://sql.{CLOUD_REGION}.{CLOUD_PROVIDER}.confluent.cloud/query/v1alpha1;
     # the request is scoped by catalog_name = env *id* (FLINK_ENV_ID) and
     # database_name = Kafka cluster *id* (KAFKA_CLUSTER_ID) — IDs, not display
-    # names. Authenticates with the Confluent Cloud API key/secret
-    # (CONFLUENT_CLOUD_API_KEY/SECRET above); the Lightning API has no key of its
-    # own. That key must authenticate the whole organization, or it returns 401.
+    # names. Authenticates with a dedicated *Global* resource API key
+    # (CONFLUENT_GLOBAL_KEY/SECRET) — the Lightning API requires a key that
+    # authenticates the whole organization, which a cluster/env/Flink/Metrics
+    # key is not. Provisioned by IaC/ccloud/lightning.tf.
     CLOUD_REGION: str | None = None
     CLOUD_PROVIDER: str | None = None
     KAFKA_CLUSTER_ID: str | None = None
+    CONFLUENT_GLOBAL_KEY: str | None = None
+    CONFLUENT_GLOBAL_SECRET: str | None = None
 
     @model_validator(mode="after")
     def _resolve_cdc_connector(self) -> "Settings":
@@ -165,7 +168,7 @@ class Settings(BaseSettings):
             "FLINK_REST_ENDPOINT": self.FLINK_REST_ENDPOINT or "None",
             "RTCE_LIGHTNING": (
                 "configured"
-                if (self.CLOUD_REGION and self.KAFKA_CLUSTER_ID and self.CONFLUENT_CLOUD_API_KEY)
+                if (self.CLOUD_REGION and self.KAFKA_CLUSTER_ID and self.CONFLUENT_GLOBAL_KEY)
                 else "None"
             ),
         }

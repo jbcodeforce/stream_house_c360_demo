@@ -39,12 +39,13 @@ def _counts(rows: list[dict], field: str, *, default: str = "Unknown") -> list[C
     return [CategoryCount(label=label, count=count) for label, count in ordered]
 
 
-def aggregate(rows: list[dict], source_mode: str) -> C360Analytics:
+def aggregate(rows: list[dict], source_mode: str, query_ms: float = 0.0) -> C360Analytics:
     """Fold profile rows into the full dashboard payload.
 
-    Safe on an empty snapshot: totals are 0, averages are ``None``, and every
-    distribution is an empty list, so the UI renders an empty state instead of
-    failing.
+    ``query_ms`` is the backend-measured time the snapshot query took (0 when not
+    measured). Safe on an empty snapshot: totals are 0, averages are ``None``,
+    and every distribution is an empty list, so the UI renders an empty state
+    instead of failing.
     """
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     row_count = len(rows)
@@ -84,6 +85,7 @@ def aggregate(rows: list[dict], source_mode: str) -> C360Analytics:
     return C360Analytics(
         source_mode=source_mode,
         generated_at=now,
+        query_ms=query_ms,
         row_count=row_count,
         total_customers=row_count,
         total_accounts=total_accounts,
