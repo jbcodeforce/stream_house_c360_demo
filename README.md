@@ -4,6 +4,8 @@
 
 The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. It is a demonstration of the Streamhouse architecture with Confluent Cloud solution.
 
+The user story for the demonstration looks like: as a data architect I want to deliver the business entities update to every system and person that depends on it, at the same time, so I can ensure no team operates on a **stale or conflicting copy** of that fact.
+
 Streamhouse data architecture continuously captures and processes changes as they happen, governs that data, and makes the same trusted business context available to applications, agents and analytics without requiring another set of data copies and pipelines.
 
 At the high level, Streamhouse reference architecture looks like in the figure below:

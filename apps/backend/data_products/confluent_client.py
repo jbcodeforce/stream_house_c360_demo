@@ -1,8 +1,8 @@
 """Best-effort Confluent Cloud REST client for the Data Products graph page.
 
 Status comes from TWO Flink SQL REST sources, merged: the Statements API
-(regular statements) and the Materialized Tables API. The c360 pipeline is
-built from materialized tables, which are maintained by a hidden system
+(regular statements) and the Materialized Tables API. A pipeline may be 
+built from streaming tables or materialized tables, which are maintained by a hidden system
 statement and so do NOT appear in the Statements list — the materialized-tables
 endpoint is their source of truth, keyed by table name. Metrics come from the
 Confluent Cloud Metrics API, using materialized-table utilization descriptors
