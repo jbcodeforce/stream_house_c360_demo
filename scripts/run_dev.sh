@@ -280,6 +280,11 @@ fi
 if $RUN_BACKEND; then
   [[ -d "$BACKEND_DIR" ]]       || die "Backend directory not found: $BACKEND_DIR"
   command -v uv >/dev/null 2>&1 || die "'uv' not found on PATH — install it (https://docs.astral.sh/uv/) to run the backend."
+  # Ensure the backend venv matches pyproject/uv.lock before launch. Without this
+  # an out-of-sync venv missing the uvicorn entry point lets 'uv run uvicorn' fall
+  # through PATH to a stranger's uvicorn (e.g. a system Python with no psycopg2).
+  log "Syncing backend dependencies (uv sync)…"
+  ( cd "$BACKEND_DIR" && uv sync ) || die "uv sync failed in $BACKEND_DIR"
 fi
 
 if $RUN_FRONTEND; then
@@ -348,7 +353,10 @@ trap cleanup INT TERM EXIT
 
 if $RUN_BACKEND; then
   log "Starting backend on :${BACKEND_PORT} …"
-  ( cd "$BACKEND_DIR" && exec uv run uvicorn main:app --reload --host 0.0.0.0 --port "$BACKEND_PORT" ) &
+  # 'python -m uvicorn' (not 'uv run uvicorn'): python always resolves to the venv
+  # interpreter, so uvicorn loads from that interpreter's packages and can never
+  # fall through PATH to a system-wide uvicorn with different/missing deps.
+  ( cd "$BACKEND_DIR" && exec uv run python -m uvicorn main:app --reload --host 0.0.0.0 --port "$BACKEND_PORT" ) &
   BACKEND_PID=$!
 fi
 

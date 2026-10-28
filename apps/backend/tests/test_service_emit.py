@@ -36,6 +36,7 @@ def pg(monkeypatch):
     monkeypatch.setattr(service.db_sink, "create", MagicMock())
     monkeypatch.setattr(service.db_sink, "update", MagicMock())
     monkeypatch.setattr(service.db_sink, "get_by_id", MagicMock())
+    monkeypatch.setattr(service.db_sink, "get_by_name", MagicMock())
     monkeypatch.setattr(service.db_sink, "delete_by_id", MagicMock())
     monkeypatch.setattr(service.kafka_producer, "produce_create", MagicMock())
     monkeypatch.setattr(service.kafka_producer, "produce_update", MagicMock())
@@ -119,3 +120,20 @@ def test_create_still_succeeds_when_producer_raises(pg, monkeypatch):
     pg.kafka_producer.produce_create.side_effect = RuntimeError("broker down")
     # Best-effort: the DB result is returned despite the producer failing.
     assert pg.create(CustomerCreate(first_name="Ada", last_name="L", email="a@b.c")) is c
+
+
+def test_get_by_name_routes_to_db_sink_when_postgres(pg):
+    c = _customer()
+    pg.db_sink.get_by_name.return_value = [c]
+    res = pg.get_by_name("Ada")
+    pg.db_sink.get_by_name.assert_called_once_with("Ada")
+    assert res == [c]
+
+
+def test_get_by_name_routes_to_inventory_when_kafka(monkeypatch):
+    c = _customer()
+    monkeypatch.setattr(service.settings, "SINK", "kafka")
+    monkeypatch.setattr(service.inventory, "get_by_name", MagicMock(return_value=[c]))
+    res = service.get_by_name("Ada")
+    service.inventory.get_by_name.assert_called_once_with("Ada")
+    assert res == [c]

@@ -7,9 +7,11 @@ This note is for explaining the code of the backend and vite application.
 * [x] Web App to present customers page and be able to add new customer, read the detail of one customer, update one, or delete one
 * [x] Pages for accounts CRUD operations
 * [x] Pages for transactions CR operations
-* [ ] Local persistence with Postgresql database running in container
-* [ ] Kafka producer to write Debezium schema compliant records.
+* [x] Local persistence with Postgresql database running in container
+* [x] Kafka producer to write Debezium schema compliant records.
 * [x] TDD for backend and frontend
+* [x] Run snapshot query from UI to backend to Confluent cloud
+* [ ] Execute lightning query from a backend and display result to Frontend
 
 ## Design
 
@@ -79,7 +81,7 @@ A new domain is added by copying the five-module slice, registering its router i
 * Start the backend
     ```sh
     cd app/backend
-    uv run uvicorn main:app --reload 
+    uv run python -m uvicorn main:app --reload 
     ```
 
     Access to REST API: [http://localhost:8000/docs](http://localhost:8000/docs)
@@ -158,6 +160,25 @@ The database has three main tables:
         created_at       TIMESTAMPTZ    NOT NULL DEFAULT NOW()
     )
     ```
+
+## Query Customer Profile Facts
+
+To query the customer profiles directly from Kafka, there are multiple different capabilities to use. Using SQL as an interface, and Streamhouse architecture, it is possible to leverage Flink snapshot query with the Confluent Cloud REST API for flink statement, or using the new Confluent lightning query via Real-Time Contect Engine.
+
+### Snapshot Query
+
+
+### Lightning Query Integration
+
+The Frontend exposes a widget to get a customer c360 profile given his/her last name. The flow is as follow:
+
+![](./diagrams/LT_app_flow.drawio.png)
+
+### Real-Time Context Engine
+
+This time the 'Assistant' user interface is to emulate an agent to call the [Confluent real-time context engine](https://docs.confluent.io/cloud/current/ai/real-time-context-engine/overview.html) to get real-time customer 360 profile data. The classical demonstration is to use an harness like Claude Code.
+
+* The frontend exposes a chat inteface []()
 
 ## Tests
 

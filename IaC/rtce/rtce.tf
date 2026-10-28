@@ -68,7 +68,7 @@ resource "confluent_rtce_topic" "fct_c360_profile" {
   cloud       = var.cloud_provider
   region      = var.aws_region_primary
   topic_name  = var.profile_topic
-  description = "C360 customer profiles — RTCE/Lightning serving for the analytics customer lookup"
+  description = "Customer 360 analytics profiles"
 
   environment {
     id = local.environment_id

@@ -144,6 +144,22 @@ def get_by_id(customer_id: UUID) -> Customer | None:
     return Customer(**row) if row else None
 
 
+def get_by_name(name: str) -> list[Customer]:
+    needle = name.strip()
+    if not needle:
+        return []
+    pattern = f"%{needle.lower()}%"
+    with db.cursor(dict_rows=True) as cur:
+        cur.execute(
+            "SELECT * FROM customers "
+            "WHERE LOWER(CONCAT_WS(' ', first_name, last_name)) LIKE %s "
+            "ORDER BY created_at DESC",
+            (pattern,),
+        )
+        rows = cur.fetchall()
+    return [Customer(**row) for row in rows]
+
+
 def list_all() -> list[Customer]:
     with db.cursor(dict_rows=True) as cur:
         cur.execute("SELECT * FROM customers ORDER BY created_at DESC")

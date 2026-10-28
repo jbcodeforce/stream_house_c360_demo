@@ -5,7 +5,7 @@
     with= {
         'changelog.mode': 'upsert',
         'connector': 'confluent',
-        'kafka.cleanup-policy': 'delete',
+        'kafka.cleanup-policy': 'compact',
         'scan.bounded.mode': 'unbounded',
         'scan.startup.mode': 'earliest-offset',
         'value.format': 'avro-registry'

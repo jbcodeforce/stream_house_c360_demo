@@ -95,6 +95,18 @@ def get_by_id(customer_id: UUID) -> Customer | None:
     return None
 
 
+def get_by_name(name: str) -> list[Customer]:
+    """Return all customers whose name matches the given substring (case-insensitive)."""
+    needle = name.strip().lower()
+    if not needle:
+        return []
+    return [
+        c
+        for c in _customers
+        if needle in f"{c.first_name} {c.last_name}".lower()
+    ]
+
+
 def create(customer: Customer) -> Customer:
     """Append a new customer to the in-memory cache and persist to CSV."""
     _customers.append(customer)

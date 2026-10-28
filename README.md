@@ -1,8 +1,16 @@
 # Streamhouse Customer 360
 
-*Updated 10/04/2026: Add webapp for demos*
+## Updates
 
-The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. It is a demonstration of the Streamhouse architecture with Confluent Cloud solution.
+* 10/27/2026: Support RTCE queries with timers. Terraform for Global key
+* 10/25/2026: Add drill down to get materialized table metrics. Add Flink snapshot 
+* 10/24/2026: Add dashboard page
+* 10/21/2026: Add data products pipeline view
+* 10/19/2026: Add generation of 200 transactions from frontend
+* 10/04/2026: Add webapp for demos
+
+## Purpose
+The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. It is a demonstration of the [Streamhouse architecture](https://streamhouse.com) with Confluent Cloud solution.
 
 The user story for the demonstration looks like: as a data architect I want to deliver the business entities update to every system and person that depends on it, at the same time, so I can ensure no team operates on a **stale or conflicting copy** of that fact.
 
@@ -120,10 +128,9 @@ The Web App and backend to support running the demonstration has the following c
 
 As explained before we can demonstrate the Streamhouse architecture in different ways, but the following activities are common:
 
-*  Deploy Confluent Cloud components: This step is to create Environment, Kafka cluster, schema registry, service accounts, api keys and secrets, and compute pools. We propose two approches to define the environment and components of this demonstration, one using the Confluent Console or one using Terraform:
+1.  Deploy Confluent Cloud components: This step is to create Environment, Kafka cluster, schema registry, service accounts, api keys and secrets, and compute pools. We propose two approches to define the environment and components of this demonstration, one using the Confluent Console or one using Terraform:
     * [using Terraform](./docs/sre_ccloud_tf.md).
     * [or using the Confluent cloud console](./docs/sre_ccloud.md)
-* [AWS components deployments](./docs/sre_aws.md) using terraform. It also includes the terraform definition to deploy Debezium CDC source connector. This step is optional as the application can emulates CDC connector and use local database.
+1. Optional: [AWS components deployments](./docs/sre_aws.md) using terraform. It also includes the terraform definition to deploy Debezium CDC source connector. This step is optional as the application can emulates CDC connector and use local database.
 * [Deploying the Flink pipeline](./docs/flink_deployment.md) to build the customer 360 analytics profile using Confluent dbt.
 * [See dedicated 'demo script' note](./docs/demo_script.md) to run the application with local components.
-

@@ -7,9 +7,7 @@ table's current rows in milliseconds. This is the contrast to
 page → delete) and no upsert changelog to collapse, because Lightning already
 serves current state.
 
-Modeled on the reference client in griga23/inventory-demo-streamhouse
-(``storefront-app/lightning_client.py``). The request is HTTP Basic auth with a
-dedicated *Global* resource API key (``CONFLUENT_GLOBAL_KEY``/``SECRET``,
+The request is HTTP Basic auth with a dedicated *Global* resource API key (``CONFLUENT_GLOBAL_KEY``/``SECRET``,
 provisioned by ``IaC/ccloud/lightning.tf``) and a body scoped by
 ``catalog_name`` = environment *id* and ``database_name`` = Kafka cluster *id*
 (IDs, not the display names the Flink SQL Statements API uses). The key must be

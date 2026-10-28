@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     # Confluent Cloud + Flink (Task 3).
     GRAPH_DATA_MODE: str = "mock"
 
+    # Assistant chat page: the greeting shown in the empty state. Served by
+    # GET /api/v1/chat/welcome so the frontend can confirm it reaches the
+    # backend (config propagation) on first connection.
+    CHAT_FIRST_PROMPT: str = "Hi, Jerome"
+
     # C360 analytics dashboard: selects the snapshot-row provider.
     # "mock" uses a deterministic fixture; "live" runs a Flink SQL snapshot
     # query against fct_c360_profile (needs FLINK_CATALOG / FLINK_DATABASE).

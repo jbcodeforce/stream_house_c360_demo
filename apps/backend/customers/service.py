@@ -94,6 +94,12 @@ def get_by_id(customer_id: UUID) -> Customer | None:
     return inventory.get_by_id(customer_id)
 
 
+def get_by_name(name: str) -> list[Customer]:
+    if settings.SINK == "postgres":
+        return db_sink.get_by_name(name)
+    return inventory.get_by_name(name)
+
+
 def list_all() -> list[Customer]:
     if settings.SINK == "postgres":
         return db_sink.list_all()

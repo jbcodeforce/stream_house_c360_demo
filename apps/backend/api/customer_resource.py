@@ -29,6 +29,14 @@ def get_customer(customer_id: UUID) -> Customer:
         raise HTTPException(status_code=404, detail="Customer not found")
     return customer
 
+@router.get("/name/{customer_name}", response_model=Customer, status_code=200)
+def get_customer_by_name(customer_name: str) -> Customer:
+    customer = service.get_by_name(customer_name)
+    if customer is None:
+        raise HTTPException(status_code=404, detail="Customer not found")
+    return customer[0]
+
+
 
 @router.put("/{customer_id}", response_model=Customer, status_code=200)
 def update_customer(customer_id: UUID, data: CustomerUpdate) -> Customer:

@@ -402,3 +402,36 @@ class TestDebeziumEnvelope:
         assert c.date_of_birth is None
         value = _build_value(c)
         assert value["date_of_birth"] is None
+
+
+# ---------------------------------------------------------------------------
+# get_by_name tests
+# ---------------------------------------------------------------------------
+
+class TestGetByName:
+    def test_get_by_name_exact_and_partial(self, client):
+        from customers import service
+        matches = service.get_by_name("Sharma")
+        assert len(matches) > 0
+        assert any(c.last_name == "Sharma" for c in matches)
+
+    def test_get_by_name_case_insensitive(self, client):
+        from customers import service
+        matches = service.get_by_name("sharma")
+        assert len(matches) > 0
+        assert any(c.last_name == "Sharma" for c in matches)
+
+    def test_get_by_name_full_name(self, client):
+        from customers import service
+        matches = service.get_by_name("Linda Sharma")
+        assert len(matches) > 0
+        assert any(c.first_name == "Linda" and c.last_name == "Sharma" for c in matches)
+
+    def test_get_by_name_empty_or_whitespace_returns_empty(self, client):
+        from customers import service
+        assert service.get_by_name("") == []
+        assert service.get_by_name("   ") == []
+
+    def test_get_by_name_no_match(self, client):
+        from customers import service
+        assert service.get_by_name("NonExistentCustomerNameXYZ") == []
