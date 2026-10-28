@@ -110,6 +110,23 @@ class Settings(BaseSettings):
     # backend (config propagation) on first connection.
     CHAT_FIRST_PROMPT: str = "Hi, Jerome"
 
+    # Assistant chat reply provider. "stub" (default) returns canned text with
+    # no LLM — keeps the no-infra test suite and a laptop without the MLX server
+    # working. "live" runs an agno agent backed by a local OpenAI-compatible LLM
+    # (e.g. an MLX server) plus the RTCE context-engine MCP server, which answers
+    # customer questions via the getData point-lookup tool over fct_c360_profile.
+    # A "live" request with missing LLM/MCP config degrades to the stub reply.
+    CHAT_DATA_MODE: str = "stub"
+    # Local OpenAI-compatible LLM (MLX server). base_url like http://127.0.0.1:7999/v1.
+    LLM_BASE_URL: str | None = None
+    LLM_MODEL: str | None = None
+    LLM_API_KEY: str = "local-key"
+    LLM_TEMPERATURE: float = 0.2
+    # The RTCE context-engine MCP server URL is NOT a standalone setting — it is
+    # derived from the Confluent coordinates below (see rtce_mcp_url()), so it
+    # cannot drift out of sync with them. Auth is the GLOBAL key via HTTP Basic
+    # (CONFLUENT_GLOBAL_KEY/SECRET), the same org-wide key the Lightning API uses.
+
     # C360 analytics dashboard: selects the snapshot-row provider.
     # "mock" uses a deterministic fixture; "live" runs a Flink SQL snapshot
     # query against fct_c360_profile (needs FLINK_CATALOG / FLINK_DATABASE).
@@ -153,6 +170,29 @@ class Settings(BaseSettings):
             self.CDC_CONNECTOR_ENABLED = _host_owns_cdc(self.DATABASE_URL)
         return self
 
+    def rtce_mcp_url(self) -> str | None:
+        """Full RTCE context-engine MCP server URL, derived from the Confluent
+        coordinates. Returns None when any piece is missing.
+
+        Shape (confirmed against the live server):
+        https://mcp.{REGION}.{PROVIDER}.confluent.cloud/mcp/v1/context-engine/
+        organizations/{ORG_ID}/environments/{ENV_ID}/kafka-clusters/{CLUSTER_ID}
+        """
+        parts = (
+            self.CLOUD_REGION,
+            self.CLOUD_PROVIDER,
+            self.FLINK_ORG_ID,
+            self.FLINK_ENV_ID,
+            self.KAFKA_CLUSTER_ID,
+        )
+        if not all(parts):
+            return None
+        return (
+            f"https://mcp.{self.CLOUD_REGION}.{self.CLOUD_PROVIDER}.confluent.cloud"
+            f"/mcp/v1/context-engine/organizations/{self.FLINK_ORG_ID}"
+            f"/environments/{self.FLINK_ENV_ID}/kafka-clusters/{self.KAFKA_CLUSTER_ID}"
+        )
+
     def summary(self) -> dict[str, str]:
         """Return a dictionary of configuration key/values with secrets masked."""
         env_file = _resolve_env_file()
@@ -170,6 +210,9 @@ class Settings(BaseSettings):
             "SCHEMA_REGISTRY_URL": self.SCHEMA_REGISTRY_URL or "None",
             "GRAPH_DATA_MODE": self.GRAPH_DATA_MODE,
             "ANALYTICS_DATA_MODE": self.ANALYTICS_DATA_MODE,
+            "CHAT_DATA_MODE": self.CHAT_DATA_MODE,
+            "CHAT_LLM": (f"{self.LLM_MODEL} @ {self.LLM_BASE_URL}" if (self.LLM_BASE_URL and self.LLM_MODEL) else "None"),
+            "CHAT_RTCE_MCP": ("derived" if self.rtce_mcp_url() else "None"),
             "FLINK_REST_ENDPOINT": self.FLINK_REST_ENDPOINT or "None",
             "RTCE_LIGHTNING": (
                 "configured"

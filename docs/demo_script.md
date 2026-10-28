@@ -193,6 +193,17 @@ The Analytics page is an illustration of what can be done by directly accessing 
 
     We can see that it gets results in 605ms.
 
+### Demonstrate Real-time Context Engine
+
+There is a local LLM running in the background listening on http://localhost:7999/v1, so a OpenAPI compatible protocol. The backend is running an Agent with MCP tool defined in code, and the user interface support chatting with the customer 360 profile topic:
+
+![](./images/querying_with_chat_rtce.png)
+
+* Examples of query to ask:
+    - What is the profile of Mr Carter?
+    - what about Mrs Walsh profile?
+
+
 ### Verify data are in Postgresql tables. 
 
 * Start a session in psql:

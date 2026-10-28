@@ -71,6 +71,13 @@ async def lifespan(app: FastAPI):
         else:
             bootstrap.seed_kafka()
     yield
+    # Close any cached chat (RTCE MCP) sessions on shutdown.
+    try:
+        from chat import agent as chat_agent
+
+        await chat_agent.shutdown()
+    except Exception:
+        logger.exception("error shutting down chat sessions")
 
 
 app = FastAPI(title="C360 Backend", version="0.1.0", lifespan=lifespan)

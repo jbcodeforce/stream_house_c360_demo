@@ -17,6 +17,10 @@ dependencies = [
     "authlib>=1.8.0",
     "cachetools>=7.2.0",
     "attrs>=26.1.0",
+    "agno>=3.1.11",
+    "mcp>=2.3.0",
+    "openai>=3.40.0",
+    "fastmcp>=4.1.2",
 ]
 
 [tool.pytest.ini_options]

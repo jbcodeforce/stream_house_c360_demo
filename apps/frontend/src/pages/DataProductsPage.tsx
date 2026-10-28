@@ -45,7 +45,7 @@ export default function DataProductsPage() {
           <tbody>
             {dataProducts.map((p) => (
               <tr key={p.id}>
-                <td><Link to={`/data-products/${p.id}`}>{p.name}</Link></td>
+                <td><Link to={`/data-products/${p.id}`} state={{ name: p.name }}>{p.name}</Link></td>
                 <td>{p.description}</td>
                 <td>{p.statement_count}</td>
               </tr>

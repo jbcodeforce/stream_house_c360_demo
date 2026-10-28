@@ -1,17 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Send } from 'lucide-react'
+import { Bot, RotateCcw, Send } from 'lucide-react'
 import { ApiError } from '../api/client'
-import { getChatWelcome, sendChatMessage } from '../api/chat'
+import { getChatWelcome, resetChatSession, sendChatMessage } from '../api/chat'
 import type { ChatMessage } from '../types/chat'
 
 /** A rendered message; `error` marks a failed turn (shown but not sent as history). */
 type DisplayMessage = ChatMessage & { error?: boolean }
+
+/** A UUID for a new conversation; falls back when crypto.randomUUID is absent. */
+function newSessionId(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID()
+  return `sess-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
+}
 
 export default function ChatPage() {
   const [greeting, setGreeting] = useState<string | null>(null)
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [sessionId, setSessionId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   // Fetch the greeting on mount. This also confirms the frontend reaches the
@@ -35,6 +42,13 @@ export default function ChatPage() {
     const text = input.trim()
     if (!text || sending) return
 
+    // Mint the session id on the first submit; reuse it for the whole conversation.
+    let sid = sessionId
+    if (!sid) {
+      sid = newSessionId()
+      setSessionId(sid)
+    }
+
     const history: ChatMessage[] = messages
       .filter((m) => !m.error)
       .map(({ role, content }) => ({ role, content }))
@@ -43,13 +57,28 @@ export default function ChatPage() {
     setInput('')
     setSending(true)
     try {
-      const res = await sendChatMessage(text, history)
+      const res = await sendChatMessage(text, history, sid)
       setMessages((prev) => [...prev, { role: 'assistant', content: res.reply }])
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : 'Failed to reach the assistant.'
       setMessages((prev) => [...prev, { role: 'assistant', content: msg, error: true }])
     } finally {
       setSending(false)
+    }
+  }
+
+  async function handleReset() {
+    const sid = sessionId
+    setSessionId(null)
+    setMessages([])
+    setInput('')
+    if (sid) {
+      // Best-effort: close the server-side session. A failure here is harmless.
+      try {
+        await resetChatSession(sid)
+      } catch {
+        // ignore — the server evicts idle sessions anyway
+      }
     }
   }
 
@@ -62,6 +91,20 @@ export default function ChatPage() {
             Ask questions about your customer 360 data in natural language.
           </p>
         </div>
+        {sessionId && (
+          <div className="chat-session">
+            <span className="chat-session__label">Session</span>
+            <code className="chat-session__id" title={sessionId}>{sessionId}</code>
+            <button
+              type="button"
+              className="btn btn--secondary btn--icon chat-session__reset"
+              onClick={() => void handleReset()}
+              disabled={sending}
+            >
+              <RotateCcw size={14} /> Reset
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="chat-panel">

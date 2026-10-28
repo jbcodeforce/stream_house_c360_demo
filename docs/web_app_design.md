@@ -170,15 +170,35 @@ To query the customer profiles directly from Kafka, there are multiple different
 
 ### Lightning Query Integration
 
-The Frontend exposes a widget to get a customer c360 profile given his/her last name. The flow is as follow:
+The Frontend exposes a widget to get a customer c360 profile given his/her last name. 
+
+![](./images/LT_execution_carter.png)
+
+The flow is as follow:
 
 ![](./diagrams/LT_app_flow.drawio.png)
+
 
 ### Real-Time Context Engine
 
 This time the 'Assistant' user interface is to emulate an agent to call the [Confluent real-time context engine](https://docs.confluent.io/cloud/current/ai/real-time-context-engine/overview.html) to get real-time customer 360 profile data. The classical demonstration is to use an harness like Claude Code.
 
-* The frontend exposes a chat inteface []()
+* The frontend exposes a chat inteface [/pages/ChatPage.tsx](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/frontend/src/pages/ChatPage.tsx) with a sendChatMessage(text, history) javascript method to reach the backend via a HTTP POST to `/chat`
+* The backend resource [api/chat_resource.py](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/api/chat_resource.py) export an async function, which delegates to the service layer
+  ```python
+  @router.post("", response_model=ChatResponse, status_code=200)
+  async def post_chat(request: ChatRequest) -> ChatResponse:
+    return await service.get_reply(request)
+  ```
+
+* The [service](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/chat/service.py) manages the support to `stub` mode to return canned text or `live` mode to run the Agno agent against the local LLM + RTCE context-engine MCP server. 
+* [Agno agent]((https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/chat/agent.py) ) wires a local OpenAI-compatible LLM (an MLX server) to the Confluent Real-Time Context Engine context-engine MCP server. The MCP server URL is derived from the Confluent (`config.settings.rtce_mcp_url()`). Auth is HTTP Basic with the org-wide GLOBAL key/secret. [Agno]() SDK offers a set of construct to simplify the definition of agent with prompt, tools.
+
+It is interresting to see that a MCP ClientSession is stateful and single-session over streamable-HTTP. So the implementation uses a session, initiated from the frontend, and maintained until the user reset it. The session_id is a cache key + agno session id. Frontend generates a UUID on first submit, displays it, sends it every turn. A `Reset` button closes the server-side connection and starts a new UUID. Conversation continuity stays frontend-driven, the history is sent from the UI and injected into the prompt. The cache is purely connection/agent reuse for latency. Session_id also tags the agno run for visibility. The connection is lazily created on first message of a session (preserves graceful degradation), reuse until Reset. The idle-TTL is set to 30 min and a max-sessions cap evict stale ones, app shutdown closes all. Per-session lock serializes a session's turns with support to reconnect-on-failure.
+
+Here is component view of the integration:
+
+![](./diagrams/chat_rtce.drawio.png)
 
 ## Tests
 

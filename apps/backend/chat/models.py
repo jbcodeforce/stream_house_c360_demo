@@ -21,21 +21,34 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    """A user question plus the prior turns of the conversation."""
+    """A user question plus the prior turns of the conversation.
+
+    ``session_id`` is a UUID the chat UI mints on the first submit and keeps for
+    the whole conversation. The backend uses it to reuse one cached MCP/agent
+    connection across the session's turns; omit it for a stateless one-off.
+    """
 
     message: str
     history: list[ChatMessage] = []
+    session_id: str | None = None
 
 
 class ChatResponse(BaseModel):
     """The assistant's reply.
 
-    ``source_mode`` is "stub" until step 2 wires the local agent + RTCE, when it
-    becomes "live" so the UI can label where the answer came from.
+    ``source_mode`` is "stub" (no LLM), "live" (agent answered), or "error".
+    ``session_id`` echoes the request's session so the UI can display it.
     """
 
     reply: str
     source_mode: str = "stub"
+    session_id: str | None = None
+
+
+class ResetRequest(BaseModel):
+    """Close and forget a cached chat session (the UI's "reset" action)."""
+
+    session_id: str
 
 
 class WelcomeResponse(BaseModel):

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import {
   Background,
   Controls,
@@ -10,7 +10,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import { X } from 'lucide-react'
 import { ApiError } from '../api/client'
-import { getGraph, getNodeMetrics, getStatus } from '../api/dataProducts'
+import { getGraph, getNodeMetrics, getStatus, listDataProducts } from '../api/dataProducts'
 import StatementNode from '../components/StatementNode'
 import type { StatementNodeData } from '../components/StatementNode'
 import { layoutGraph } from '../lib/graphLayout'
@@ -39,6 +39,13 @@ function fmtUptime(seconds: number | null): string {
 
 export default function StatementGraphPage() {
   const { id } = useParams<{ id: string }>()
+  const location = useLocation()
+
+  // Name of the data product selected on the previous page. Passed via router
+  // state for instant display; resolved from the list as a fallback on a direct
+  // load / refresh (when navigation state is gone).
+  const navName = (location.state as { name?: string } | null)?.name ?? null
+  const [productName, setProductName] = useState<string | null>(navName)
 
   const [graph, setGraph] = useState<Graph | null>(null)
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({})
@@ -69,6 +76,23 @@ export default function StatementGraphPage() {
       mountedRef.current = false
     }
   }, [])
+
+  // Fallback: if we arrived without router state (direct load / refresh), look
+  // the product name up by id so the title is still correct.
+  useEffect(() => {
+    if (!id || navName) return
+    let active = true
+    listDataProducts()
+      .then((products) => {
+        if (active) setProductName(products.find((p) => p.id === id)?.name ?? null)
+      })
+      .catch(() => {
+        /* leave the title on its generic fallback */
+      })
+    return () => {
+      active = false
+    }
+  }, [id, navName])
 
   // Load the graph once, then compute static left-to-right positions.
   useEffect(() => {
@@ -207,7 +231,10 @@ export default function StatementGraphPage() {
   return (
     <div className="graph-page">
       <div className="page-header">
-        <h1>Statement Graph</h1>
+        <div>
+          <h1>{productName ?? 'Statement Graph'}</h1>
+          <p className="page-subtitle">Statement graph</p>
+        </div>
         <Link to="/data-products" className="btn btn--secondary">
           Back
         </Link>
