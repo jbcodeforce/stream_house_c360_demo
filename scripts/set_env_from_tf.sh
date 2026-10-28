@@ -28,6 +28,7 @@ SCRIPT_DIR="$(cd "$(dirname "${SCRIPT_SRC}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 CCLOUD_DIR="${REPO_ROOT}/IaC/ccloud"
 AWS_DIR="${REPO_ROOT}/IaC/AWS"
+RTCE_DIR="${REPO_ROOT}/IaC/rtce"
 BACKEND_ENV_FILE="${REPO_ROOT}/apps/backend/.env"
 
 if [[ ! -d "${CCLOUD_DIR}" ]]; then
@@ -69,8 +70,11 @@ export SCHEMA_REGISTRY_API_SECRET=$(terraform -chdir="${CCLOUD_DIR}" output -raw
 export SCHEMA_REGISTRY_KEY="${SCHEMA_REGISTRY_API_KEY}"
 export SCHEMA_REGISTRY_SECRET="${SCHEMA_REGISTRY_API_SECRET}"
 
-export CONFLUENT_GLOBAL_KEY=$(terraform -chdir="${CCLOUD_DIR}" output -raw rtce_lightning_api_key_id 2>/dev/null || true)
-export CONFLUENT_GLOBAL_SECRET=$(terraform -chdir="${CCLOUD_DIR}" output -raw rtce_lightning_api_key_secret 2>/dev/null || true)
+# The RTCE/Lightning Global key lives in the separate IaC/rtce stack (applied
+# after dbt creates the fct_c360_profile topic). Empty until that stack is
+# applied, which is fine — the backend just reports RTCE as unconfigured.
+export CONFLUENT_GLOBAL_KEY=$(terraform -chdir="${RTCE_DIR}" output -raw rtce_lightning_api_key_id 2>/dev/null || true)
+export CONFLUENT_GLOBAL_SECRET=$(terraform -chdir="${RTCE_DIR}" output -raw rtce_lightning_api_key_secret 2>/dev/null || true)
 
 # ── Extract AWS RDS outputs (if available) ───────────────────────────────────
 HAVE_AWS=false

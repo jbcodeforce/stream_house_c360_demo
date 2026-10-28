@@ -51,16 +51,40 @@ This time the database runs locally and the web app writes to kafka in parallel 
     ```
 
     or using your own scripts to get environment variables preset, to an existing Confluent Cloud environment.
-* Set where to find the specidic .env file. You can use different .env file and reference it via environment variable:
+
+## Demonstration Scenarios
+
+### Prepare backend environment
+
+* Set where to find the specific `.env` file. You can use different .env file and reference it via environment variable:
     ```sh
     export ENV_CONFIG_FILE=$PWD/apps/backend/.env
-
     ```
 
 * Start the local webapp
     ```sh
     ./scripts/run_dev.sh 
     ```
+
+
+With the following settings, the backend service will create cdc topics, schemas, and send data to kafka directly:
+
+```sh
+SINK=postgres
+KAFKA_PRODUCE_ENABLED=true
+CDC_CONNECTOR_ENABLED=false
+KAFKA_SEED_ON_START=true
+```
+
+When using remote database and pure CDC processing, using a CDC connector in Confluent cloud, the settings are:
+
+```
+CDC_CONNECTOR_ENABLED=true
+KAFKA_SEED_ON_START=false
+KAFKA_PRODUCE_ENABLED=false
+```
+
+### Deploy the Flink Statements / Materialized Tables
 
 * Deploy the Flink statement using dbt
     ```sh
@@ -72,29 +96,44 @@ This time the database runs locally and the web app writes to kafka in parallel 
     dbt run --select +c360.facts.fct_c360_profile
     ```
 
-## Demonstration Scenarios
+* Once all materialized tables are deployed, we need to enable RTCE on the fact table. There is a separate terraform to do so.
+    ```sh
+    cd IaC/rtce
+    terraform apply
+    ```
 
-With the following setting in the environment variables, the backend service will create cdc topics, schemas, and send data to kafka directly:
+    Should output:
+    ```sh
+    Apply complete! Resources: 5 added, 0 changed, 0 destroyed.
 
-```sh
-SINK=postgres
-KAFKA_PRODUCE_ENABLED=true
-CDC_CONNECTOR_ENABLED=false
-KAFKA_SEED_ON_START=true
-```
+    Outputs:
 
-For pure CDC processing, using a CDC connector in Confluent cloud:
-```
-CDC_CONNECTOR_ENABLED=true
-KAFKA_SEED_ON_START=false
-KAFKA_PRODUCE_ENABLED=false
-```
+    rtce_lightning_api_key_id = "IOGMHHDUI22T7GPE"
+    rtce_lightning_api_key_secret = <sensitive>
+    rtce_lightning_sa_id = "sa-r2z9987"
+    rtce_topic_name = "fct_c360_profile"
+    ```
+
+    Verify in the console that the `fct_c360_profile` topic is enabled:
+    ![](./images/LT_in_topic.png)
+
+* Update environment variables to be able to get the Global key and secret
+    ```sh
+    CONFLUENT_GLOBAL_KEY=$(terraform output -raw rtce_lightning_api_key_id)
+    CONFLUENT_GLOBAL_SECRET=$(terraform output -raw rtce_lightning_api_key_secret)
+    ```
+
+    or to also modify the backend .env file rerun:
+    ```sh
+    ./scripts/set_env_from_tf.s
+    ```
+
 
 ### Use the Web App
 
 [http://localhost:5173/](http://localhost:5173/)
 
-### Customers Management
+#### Customers Management
 
 The customers page presents a list of existing customers loaded from the database:
 
@@ -106,14 +145,14 @@ For example selecting the eye icon on James Carter brings this view:
 
 ![](./images/james_carter.png)
 
-### Accounts Management
+#### Accounts Management
 
 The accounts page presents a list of account per customer loaded from the database:
 
 ![](./images/web_accounts.png)
 
 
-### Transaction Management
+#### Transaction Management
 
 The transactions page presents a list of current transactions in the database:
 
@@ -148,9 +187,11 @@ The Analytics page is an illustration of what can be done by directly accessing 
 1. Use the snapshot query, which creates a Flink Statement, to get a data for a user:
     ![](./images/snap_query_carter.png)
     Same as above the query now has where condition on the customer name.
-    
+
 1. We can do the same query with the new Real-time context engine, lightning query:
-    ![]()
+    ![](./images/LT_execution_carter.png)
+
+    We can see that it gets results in 605ms.
 
 ### Verify data are in Postgresql tables. 
 

@@ -10,13 +10,13 @@ Streamhouse data architecture continuously captures and processes changes as the
 
 At the high level, Streamhouse reference architecture looks like in the figure below:
 
-![](./docs/stream-arch.drawio.png)
+![](./docs/diagrams/stream-arch.drawio.png)
 
 The architecture delivers a capture layer to bring data in centralized messaging platform to transport and persist records defined in structured schemas. A layer of tranformation, data enrichment and data analytics construct helps to serve golden records to downstream processing. Those golden records, represneting valuable business events or data analytics can be consumed by AI Agent to build their own, fresh, context.
 
 When applied the architecture to Confluent technology stack, Streamhouse is supported by the following components:
 
-![](./docs/stream-cc-arch.drawio.png)
+![](./docs/diagrams/stream-cc-arch.drawio.png)
 
 1. The **capture** is done by different Kafka source connectors
 1. The **transport** is supported by Kafka Brokers and topics, with contracts in Schema Registry

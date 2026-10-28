@@ -96,7 +96,7 @@ class LightningClient:
             logger.warning(
                 "LightningClient: skipping Lightning query — these RTCE settings are unset: %s. "
                 "(CONFLUENT_GLOBAL_KEY/SECRET is the GLOBAL API key from "
-                "IaC/ccloud/lightning.tf — distinct from the Flink/Metrics keys.)",
+                "IaC/rtce — distinct from the Flink/Metrics keys.)",
                 ", ".join(missing),
             )
             return []
@@ -109,6 +109,8 @@ class LightningClient:
             "options": {"max_result_rows": max_rows, "result_format": "JSON"},
             "client_info": {},
         }
+        context = f"catalog={s.FLINK_ENV_ID} database={s.KAFKA_CLUSTER_ID}"
+        logger.info("LightningClient: running Lightning query (%s): %s", context, sql)
         try:
             response = httpx.post(
                 self._endpoint(),
@@ -122,7 +124,9 @@ class LightningClient:
             _log_query_error(exc)
             return []
 
-        return self._rows(payload, fallback_columns)
+        rows = self._rows(payload, fallback_columns)
+        logger.info("LightningClient: Lightning query returned %d row(s)", len(rows))
+        return rows
 
     @staticmethod
     def _rows(payload: dict, fallback_columns: Sequence[str]) -> list[dict]:
@@ -130,5 +134,9 @@ class LightningClient:
         data = result.get("data") or []
         schema_cols = (result.get("schema") or {}).get("columns") or []
         columns = [c if isinstance(c, str) else (c or {}).get("name") for c in schema_cols]
-        columns = [c for c in columns if c] or list(fallback_columns)
+        # The Lightning API returns column names UPPERCASED (CUSTOMER_ID) while
+        # the SELECT (and the rest of the pipeline) uses lowercase snake_case —
+        # normalize so keys like "customer_id" resolve. The fct_c360_profile
+        # columns are all lowercase, so lowercasing is lossless here.
+        columns = [c.lower() for c in columns if c] or [c.lower() for c in fallback_columns]
         return [dict(zip(columns, row)) for row in data if isinstance(row, list)]

@@ -70,6 +70,22 @@ def test_parses_rows_with_response_schema(monkeypatch):
     ]
 
 
+def test_uppercase_schema_names_are_normalized_to_lowercase(monkeypatch):
+    # The real Lightning API returns UPPERCASED column names; the rest of the
+    # pipeline expects lowercase snake_case, so they must be normalized.
+    _install_post(
+        monkeypatch,
+        lambda body: httpx.Response(200, json={
+            "result": {
+                "schema": {"columns": [{"name": "CUSTOMER_ID"}, {"name": "FIRST_NAME"}]},
+                "data": [["c1", "James"]],
+            }
+        }),
+    )
+    rows = LightningClient(_SETTINGS).query("SELECT ...", ("customer_id", "first_name"), max_rows=1)
+    assert rows == [{"customer_id": "c1", "first_name": "James"}]
+
+
 def test_falls_back_to_requested_columns_when_schema_absent(monkeypatch):
     _install_post(
         monkeypatch,
