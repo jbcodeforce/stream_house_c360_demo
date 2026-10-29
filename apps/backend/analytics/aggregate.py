@@ -1,7 +1,7 @@
 """Turn a snapshot of ``fct_c360_profile`` rows into the dashboard payload.
 
 Pure function, no I/O: the provider fetches rows (mock fixture or live Flink
-snapshot), this folds them into a ``C360Analytics``. Kept separate from the
+snapshot), this folds them into a ``DataAnalytics``. Kept separate from the
 providers so the aggregation is unit-testable without any Confluent wiring.
 """
 
@@ -11,7 +11,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 from analytics.models import (
-    C360Analytics,
+    DataAnalytics,
     CategoryCount,
     CategoryValue,
     DataQuality,
@@ -39,7 +39,7 @@ def _counts(rows: list[dict], field: str, *, default: str = "Unknown") -> list[C
     return [CategoryCount(label=label, count=count) for label, count in ordered]
 
 
-def aggregate(rows: list[dict], source_mode: str, query_ms: float = 0.0) -> C360Analytics:
+def aggregate(rows: list[dict], source_mode: str, query_ms: float = 0.0) -> DataAnalytics:
     """Fold profile rows into the full dashboard payload.
 
     ``query_ms`` is the backend-measured time the snapshot query took (0 when not
@@ -82,7 +82,7 @@ def aggregate(rows: list[dict], source_mode: str, query_ms: float = 0.0) -> C360
         head.append(CategoryCount(label="Other", count=other))
         by_country = head
 
-    return C360Analytics(
+    return DataAnalytics(
         source_mode=source_mode,
         generated_at=now,
         query_ms=query_ms,

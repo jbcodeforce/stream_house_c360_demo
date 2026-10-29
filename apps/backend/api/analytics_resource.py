@@ -5,19 +5,21 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from analytics import service
-from analytics.models import C360Analytics, CustomerProfile, CustomerSearchResponse
+from analytics.models import DataAnalytics, CustomerProfile, CustomerSearchResponse
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 
-@router.get("/c360-profile", response_model=C360Analytics, status_code=200)
-def get_c360_profile() -> C360Analytics:
-    """Snapshot analytics over ``fct_c360_profile``.
+@router.get("/c360-profile", response_model=DataAnalytics, status_code=200)
+def get_c360_profile() -> DataAnalytics:
+    """Cross-customer analytics for the C360 dashboard.
 
-    Always 200 with a well-formed payload: when a live snapshot query is
-    unconfigured or fails, the payload is simply empty (``row_count == 0``).
+    Mock mode folds the fixture; live mode reads the five ``fct_crm_*`` data
+    products with concurrent snapshot queries and assembles them. Always 200
+    with a well-formed payload: when a live query is unconfigured or fails, the
+    payload is simply empty (``row_count == 0``).
     """
-    return service.get_c360_analytics()
+    return service.get_data_analytics()
 
 
 @router.get("/c360-profile/search", response_model=CustomerSearchResponse, status_code=200)

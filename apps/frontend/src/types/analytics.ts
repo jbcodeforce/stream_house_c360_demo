@@ -14,7 +14,7 @@ export interface DataQuality {
   missing_phone: number
 }
 
-export interface C360Analytics {
+export interface DataAnalytics {
   source_mode: string
   generated_at: string
   query_ms: number

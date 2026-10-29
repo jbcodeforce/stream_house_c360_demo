@@ -1,0 +1,13 @@
+models:
+- name: fct_crm_by_generation
+  description: ""
+  columns:
+  - name: generation_segment
+    data_type: string
+    constraints:
+      - type: not_null
+      - type: primary_key
+        expression: "not enforced"
+  - name: generation_count
+    data_type: BIGINT
+

@@ -127,11 +127,16 @@ class Settings(BaseSettings):
     # cannot drift out of sync with them. Auth is the GLOBAL key via HTTP Basic
     # (CONFLUENT_GLOBAL_KEY/SECRET), the same org-wide key the Lightning API uses.
 
-    # C360 analytics dashboard: selects the snapshot-row provider.
-    # "mock" uses a deterministic fixture; "live" runs a Flink SQL snapshot
-    # query against fct_c360_profile (needs FLINK_CATALOG / FLINK_DATABASE).
+    # C360 analytics dashboard: selects the aggregates provider.
+    # "mock" folds a deterministic fixture; "live" runs five snapshot SELECTs
+    # against the CRM data products (fct_crm_summary / _by_segment / _by_generation
+    # / _by_gender / _by_country) via the confluent-sql driver — see
+    # analytics/crm_provider.py (needs the FLINK_*/CLOUD_* coords incl.
+    # KAFKA_CLUSTER_ID; no FLINK_CATALOG — the environment resolves the catalog).
     ANALYTICS_DATA_MODE: str = "mock"
-    # Row cap for the live snapshot SELECT (the table is one row per customer).
+    # Row cap once read by the full-table snapshot (providers.get_rows); now dead
+    # — the dashboard reads the pre-aggregated CRM products and the per-customer
+    # lookups use their own caps. Kept until get_rows is removed (planned cleanup).
     ANALYTICS_SNAPSHOT_LIMIT: int = 50_000
 
     # Live-mode credentials (unused until Task 3's LiveProvider).

@@ -1,0 +1,14 @@
+models:
+- name: fct_crm_by_segment
+  description: ""
+  columns:
+  - name: customer_segment
+    data_type: string
+    constraints:
+      - type: not_null
+      - type: primary_key
+        expression: "not enforced"
+  - name: customer_count
+    data_type: BIGINT
+  - name: total_balance
+    data_type: decimal

@@ -4,10 +4,10 @@ import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as api from '../api/analytics'
 import { ApiError } from '../api/client'
-import type { C360Analytics } from '../types/analytics'
+import type { DataAnalytics } from '../types/analytics'
 import AnalyticsPage from './AnalyticsPage'
 
-const sample: C360Analytics = {
+const sample: DataAnalytics = {
   source_mode: 'mock',
   generated_at: '2026-10-26T12:00:00Z',
   query_ms: 12.3,

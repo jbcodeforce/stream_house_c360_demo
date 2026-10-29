@@ -10,7 +10,7 @@ import {
 } from '../api/analytics'
 import { formatCurrency, formatMs, nf } from '../lib/format'
 import CustomerLookup from '../components/CustomerLookup'
-import type { C360Analytics, CategoryCount, CategoryValue } from '../types/analytics'
+import type { DataAnalytics, CategoryCount, CategoryValue } from '../types/analytics'
 
 interface Bar {
   label: string
@@ -66,7 +66,7 @@ function StatTile({ label, value, sub }: { label: string; value: string; sub?: s
 }
 
 export default function AnalyticsPage() {
-  const [data, setData] = useState<C360Analytics | null>(null)
+  const [data, setData] = useState<DataAnalytics | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 

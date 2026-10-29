@@ -1,0 +1,13 @@
+models:
+- name: fct_crm_by_gender
+  description: ""
+  columns:
+  - name: gender
+    data_type: string
+    constraints:
+      - type: not_null
+      - type: primary_key
+        expression: "not enforced"
+  - name: gender_count
+    data_type: BIGINT
+

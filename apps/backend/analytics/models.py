@@ -1,7 +1,7 @@
 """Pydantic models for the C360 analytics dashboard.
 
 The dashboard reads a single snapshot of ``fct_c360_profile`` and renders it as
-KPI tiles plus a handful of single-series distributions. ``C360Analytics`` is
+KPI tiles plus a handful of single-series distributions. ``DataAnalytics`` is
 the whole response: headline totals, averages, a data-quality rollup, and the
 category breakdowns the frontend draws as bar charts.
 """
@@ -33,7 +33,7 @@ class DataQuality(BaseModel):
     missing_phone: int
 
 
-class C360Analytics(BaseModel):
+class DataAnalytics(BaseModel):
     """Full dashboard payload for one snapshot of ``fct_c360_profile``.
 
     ``source_mode`` is "mock" or "live" so the UI can label where the snapshot

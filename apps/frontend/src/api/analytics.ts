@@ -1,8 +1,8 @@
-import type { C360Analytics, CustomerProfile, CustomerSearchResponse } from '../types/analytics'
+import type { DataAnalytics, CustomerProfile, CustomerSearchResponse } from '../types/analytics'
 import { request } from './client'
 
-export function getC360Analytics(): Promise<C360Analytics> {
-  return request<C360Analytics>('/analytics/c360-profile')
+export function getC360Analytics(): Promise<DataAnalytics> {
+  return request<DataAnalytics>('/analytics/c360-profile')
 }
 
 export function searchCustomers(name: string): Promise<CustomerSearchResponse> {

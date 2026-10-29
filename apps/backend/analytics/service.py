@@ -11,10 +11,10 @@ import time
 from collections.abc import Callable
 from typing import TypeVar
 
-from analytics import providers
+from analytics import crm_aggregate, crm_provider, mock_data, providers
 from analytics.aggregate import aggregate
 from analytics.models import (
-    C360Analytics,
+    DataAnalytics,
     CustomerMatch,
     CustomerProfile,
     CustomerSearchResponse,
@@ -52,9 +52,20 @@ def _to_float(value: object) -> float:
         return 0.0
 
 
-def get_c360_analytics() -> C360Analytics:
-    (rows, source_mode), query_ms = _timed(providers.get_rows)
-    return aggregate(rows, source_mode=source_mode, query_ms=query_ms)
+def get_data_analytics() -> DataAnalytics:
+    """Dashboard aggregates: mock folds the fixture; live reads the CRM products.
+
+    Mock mode folds ``PROFILE_SNAPSHOT`` through ``aggregate`` (the behavioural
+    reference, unchanged). Live mode runs the five ``fct_crm_*`` snapshot queries
+    concurrently and assembles the same payload — so only the pre-aggregated
+    summary rows cross the wire instead of every customer row.
+    """
+    mode = providers._mode()
+    if mode == "mock":
+        rows, query_ms = _timed(lambda: list(mock_data.PROFILE_SNAPSHOT))
+        return aggregate(rows, source_mode="mock", query_ms=query_ms)
+    result_sets, query_ms = _timed(crm_provider.fetch_crm_result_sets)
+    return crm_aggregate.assemble(*result_sets, source_mode="live", query_ms=query_ms)
 
 
 def _to_search_response(

@@ -1,0 +1,13 @@
+models:
+- name: fct_crm_by_country
+  description: ""
+  columns:
+  - name: country
+    data_type: string
+    constraints:
+      - type: not_null
+      - type: primary_key
+        expression: "not enforced"
+  - name: country_count
+    data_type: BIGINT
+

@@ -1,0 +1,28 @@
+models:
+- name: fct_crm_summary
+  description: ""
+  columns:
+  - name: qscope
+    data_type: string
+    constraints:
+      - type: not_null
+      - type: primary_key
+        expression: "not enforced"
+  - name: total_customers
+    data_type: BIGINT
+  - name: total_accounts
+    data_type: BIGINT
+  - name: total_balance
+    data_type: decimal
+  - name: total_transactions
+    data_type: BIGINT
+  - name: total_txn_amount
+    data_type: decimal
+  - name: avg_age
+    data_type: double
+  - name: missing_email
+    data_type: INTEGER
+  - name: missing_phone
+    data_type: INTEGER
+  - name: complete
+    data_type: INTEGER
