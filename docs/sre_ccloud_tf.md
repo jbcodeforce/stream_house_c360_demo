@@ -1,6 +1,6 @@
 # Defining Confluent Cloud Resources with the Terraform
 
-This section of the documentation is to present the exhaustive steps to deploy the Confluent Cloud components for Streamhouse.
+This section of the documentation is to present the exhaustive steps to deploy the Confluent Cloud components for Streamhouse using Terraform.
 
 Terraform is organized under the [`IaC/`](IaC/) directory as **four independent root modules** (separate local state), each file-per-concern:
 
@@ -11,35 +11,33 @@ Terraform is organized under the [`IaC/`](IaC/) directory as **four independent 
 | `IaC/connector` | Managed Debezium PostgreSQL CDC source connector (opt-in). |
 | `IaC/rtce` | **Real-Time Context Engine / Lightning Query API** enablement: the Global API key + registering `fct_c360_profile` as an RTCE topic. |
 
-This split lets the core Confluent Cloud stack run locally with **no AWS credentials**; AWS and the managed connector are opt-in cost paths. The `rtce` module is applied **last** — after `dbt` has created the `fct_c360_profile` materialized table — because it registers that *existing* topic with the Lightning serving layer (see [Enable the Real-Time Context Engine](#enable-the-real-time-context-engine-rtce--lightning-query-api) below).
+This split lets the core Confluent Cloud stack run locally with **no AWS credentials**. AWS and the managed connector are opt-in cost paths. The `rtce` module is applied **last** — after `dbt` has created the different facts tables, because it registers those *existing* topics with the Lightning serving layer (see [Enable the Real-Time Context Engine](#enable-the-real-time-context-engine-rtce--lightning-query-api) below).
 
 The figure below illustrates what the terraforms in [`IaC/ccloud/`](IaC/ccloud/) will deploy. We start from an existing Organization, with a user with Org Admin role, and Confluent Cloud Resource API Key and Secret. 
 
 ![](./diagrams/cc-tf-comp.drawio.png)
 
-* Create environment, Kafka cluster, 
-* Flink compute pool, Schema Registry, service account + Kafka/SR API keys. 
+The definition helps to:
+* Create environment
+* Create Kafka cluster, Schema Registry, service account + Kafka/SR API key
+* Flink compute pool
+* Kafka topic
 
 
 ### Folder Structure
 
-IaC/ccloud/ — core Confluent Cloud stack:
+IaC/ccloud/ — core Confluent Cloud stack. Some important notes:
 
-- provider.tf: dropped the aws provider and the unused random provider — now requires only confluent (verified via terraform providers).
-- data.tf: removed the AWS Secrets Manager read + local.rds_*; kept env_mgr.
-- flink.tf: added confluent_flink_compute_pool.pool (the file was empty).
-- connector.tf: deleted (moved out).
-- variables.tf: dropped rds_secret_arn/connector_name/kafka_topic_prefix; added flink_max_cfu.
-- outputs.tf: replaced the connector outputs with flink_compute_pool_id.
-- terraform.tfvars/.example: removed the AWS/connector entries.
+- provider.tf: requires only confluent.
+- flink.tf: confluent_flink_compute_pool, no Flinks statements are those are configured via dbt.
+- outputs.tf: reports important variables to be used to set the environment variables for the application.
 
 IaC/rtce/ — Real-Time Context Engine / Lightning Query API enablement (applied after `dbt run`):
 
-- provider.tf: confluent provider only.
 - data.tf: reads the core environment/Kafka-cluster ids from `../ccloud` state via `terraform_remote_state` (same pattern as `IaC/connector`); data sources expose the cluster `rbac_crn` and SR `resource_name` for the role bindings.
-- rtce.tf: the RTCE service account, role bindings (`CloudClusterAdmin` on the cluster, `ResourceOwner` on the SR subjects), the **Global API key** (`managed_resource` kind `Global`), and `confluent_rtce_topic.fct_c360_profile` — which registers the existing topic with RTCE so the Lightning Query API serves it.
-- outputs.tf: `rtce_lightning_api_key_id`/`_secret` (→ `CONFLUENT_GLOBAL_KEY`/`SECRET`), `rtce_lightning_sa_id`, `rtce_topic_name`.
-- variables.tf / terraform.tfvars.example: org-admin Cloud API creds, cloud/region, `prefix`, optional `core_state_path` and `profile_topic`.
+- rtce.tf: the RTCE service account, role bindings (`CloudClusterAdmin` on the cluster, `ResourceOwner` on the SR subjects), the **Global API key** (`managed_resource` kind `Global`), and `confluent_rtce_topic.fct_c360_profile` — which registers the existing topic with RTCE so the Lightning Query API serves it. Other topics are added when data engineers needs to expose new fact or dimension tables.
+- outputs.tf: `rtce_lightning_api_key_id`/`_secret` used to get `CONFLUENT_GLOBAL_KEY`/`SECRET` environment variables.
+
 
 ## Pre-requisites
 
@@ -52,25 +50,29 @@ IaC/rtce/ — Real-Time Context Engine / Lightning Query API enablement (applied
 * Get [Terraform cli](https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli)
 
 ## Get Confluent Cloud environment information
+
 * Log to the Confluent Console
-* Get your user identifier if you are an organization admin, or ask your Organization administrator for a service account that has organization admin role. User has an id starting with `u-`, while service account has: `sa-`. We recommend using a service account
+* Get your user identifier if you are an organization admin, or ask your Organization administrator for a service account that has organization admin role. User has an id starting with `u-`, while service account has: `sa-`. 
+
+    We recommend using a service account
+    
     ![](./images/ccloud/sa-id.png)
 
     Verify the role binding for this service account to have the Org Admin
     ![](./images/ccloud/role_bdg-org_admin.png)
 * Get the API KEY or create new one for Cloud resource management:
     ![](./images/ccloud/cc-apikey.png)
-* Export those key and secret as environment variables:
+* Start a fresh Termincal session and export those key and secret as environment variables:
     ```sh
     export CONFLUENT_CLOUD_API_KEY=PQ...
     export CONFLUENT_CLOUD_API_SECRET=cflt....
     ```
-* Under `IaC/ccloud/` copy to `terraform.tfvars.example` to  `terraform.tfvars` and fill in real values.
+* Under `IaC/ccloud/` copy to `terraform.tfvars.example` to  `terraform.tfvars` and fill in expected values.
     ```sh
     cp terraform.tfvars.example terraform.tfvars
     ```
     Do NOT commit terraform.tfvars to version control. IT is gitignored as of now in this repo.
-* Modify the settings for cloud provider, region, prefix and service account id 
+
 
 ## Perform the deployment
 
@@ -107,7 +109,7 @@ IaC/rtce/ — Real-Time Context Engine / Lightning Query API enablement (applied
 
 ## dbt
 
-The `dbt run` can be applied in a CI/CD process with SHA guard to avoid redeploying materialized table. Be sure to have set the environment variables by doing something like
+The `dbt run` can be applied in a CI/CD process with SHA guard to avoid redeploying materialized tables that were not modified. Be sure to have set the environment variables by doing something like:
 
 ```sh
 set -a

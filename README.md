@@ -10,7 +10,12 @@
 * 10/04/2026: Add webapp for demos
 
 ## Purpose
-The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. It is a demonstration of the [Streamhouse architecture](https://streamhouse.com) with Confluent Cloud solution.
+
+The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. 
+
+![](./docs/images/home_page.png)
+
+It is a demonstration of the [Streamhouse architecture](https://streamhouse.com) with Confluent Cloud solution.
 
 The user story for the demonstration looks like: as a data architect I want to deliver the business entities update to every system and person that depends on it, at the same time, so I can ensure no team operates on a **stale or conflicting copy** of that fact.
 
