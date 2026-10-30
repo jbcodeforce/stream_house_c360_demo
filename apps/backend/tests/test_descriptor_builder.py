@@ -126,6 +126,65 @@ def test_edges_reconstruct_source_and_model_dependencies():
     assert len(edges) == 3
 
 
+def _multi_manifest() -> dict:
+    """Two products where a crm model depends on a c360 model — exercises the
+    cross-product (external) import path and per-model compute_pool_id."""
+    return {
+        "metadata": {"project_name": "streamhouse"},
+        "nodes": {
+            "model.streamhouse.fct_c360_profile": {
+                "resource_type": "model", "name": "fct_c360_profile",
+                "path": "c360/facts/fct_c360_profile.sql",
+                "config": {"materialized": "materialized_table", "compute_pool_id": "lfcp-c360"},
+                "depends_on": {"nodes": []},
+            },
+            "model.streamhouse.fct_crm_summary": {
+                "resource_type": "model", "name": "fct_crm_summary",
+                "path": "crm/facts/fct_crm_summary.sql",
+                "config": {"materialized": "streaming_table", "compute_pool_id": "lfcp-crm"},
+                "depends_on": {"nodes": ["model.streamhouse.fct_c360_profile"]},
+            },
+        },
+        "sources": {},
+    }
+
+
+def test_statement_node_carries_compute_pool_id():
+    byid = _nodes_by_id(descriptor_builder.build_descriptors(_multi_manifest(), lambda n: f"dbt-{n}")["crm"])
+    assert byid["fct_crm_summary"]["compute_pool_id"] == "lfcp-crm"
+
+
+def test_statement_node_falls_back_to_default_pool():
+    # _manifest() models carry no config.compute_pool_id -> use default_pool.
+    byid = _nodes_by_id(
+        descriptor_builder.build_descriptors(_manifest(), lambda n: f"dbt-{n}", default_pool="lfcp-default")["c360"]
+    )
+    assert byid["src_customers"]["compute_pool_id"] == "lfcp-default"
+
+
+def test_cross_product_dependency_emits_external_node():
+    crm = descriptor_builder.build_descriptors(_multi_manifest(), lambda n: f"dbt-{n}")["crm"]
+    byid = _nodes_by_id(crm)
+    ext = byid["fct_c360_profile"]
+    assert ext["type"] == "statement"
+    assert ext["external"] is True
+    assert "is_product" not in ext  # false flag is dropped
+    assert ext["compute_pool_id"] == "lfcp-c360"  # the owning (c360) pool
+    edges = {(e["source"], e["target"]) for e in crm["edges"]}
+    assert ("fct_c360_profile", "fct_crm_summary") in edges
+
+
+def test_owned_statement_node_has_no_external_flag():
+    byid = _nodes_by_id(descriptor_builder.build_descriptors(_multi_manifest(), lambda n: f"dbt-{n}")["crm"])
+    assert "external" not in byid["fct_crm_summary"]  # owned node drops false flag
+
+
+def test_source_node_has_no_pool_or_external():
+    byid = _nodes_by_id(_build()["c360"])
+    src = byid["topic_customers"]
+    assert "compute_pool_id" not in src and "external" not in src
+
+
 def test_output_validates_against_backend_graph_model():
     # The builder must emit nodes/edges the backend's Graph model accepts, so a
     # regenerated descriptor is guaranteed loadable by descriptor.get_graph.

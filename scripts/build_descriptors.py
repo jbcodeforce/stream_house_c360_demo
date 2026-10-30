@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -97,7 +98,13 @@ def main(argv: list[str] | None = None) -> int:
         prefix = _load_statement_prefix(args.profiles_dir, _REPO_ROOT / "pipelines")
 
     statement_name_fn = _make_statement_name_fn(prefix, project_name)
-    descriptors = descriptor_builder.build_descriptors(manifest, statement_name_fn)
+    # The connection-default compute pool (the dbt profile's compute_pool_id,
+    # exported as FLINK_COMPUTE_POOL_ID). Models that pin their own pool in dbt
+    # config carry it in the manifest; the rest fall back to this default.
+    default_pool = os.environ.get("FLINK_COMPUTE_POOL_ID")
+    descriptors = descriptor_builder.build_descriptors(
+        manifest, statement_name_fn, default_pool=default_pool
+    )
 
     if not descriptors:
         print("No data products found in the manifest.", file=sys.stderr)

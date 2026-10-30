@@ -54,24 +54,37 @@ def _humanize(product_id: str) -> str:
     return product_id.replace("_", " ").replace("-", " ").title()
 
 
+def _pool_from_config(model: dict) -> str | None:
+    """Default ``pool_for``: the per-model ``compute_pool_id`` from dbt config."""
+    return model.get("config", {}).get("compute_pool_id")
+
+
 def _serialize_node(node: GraphNode) -> dict:
-    """Validated node -> compact descriptor dict: drop None fields and a false
-    ``is_product`` so source nodes stay ``{id,type,label,topic}`` and only the
-    product node carries the flag (matching the hand-authored descriptor style)."""
+    """Validated node -> compact descriptor dict: drop None fields and the false
+    ``is_product``/``external`` flags so source nodes stay ``{id,type,label,topic}``
+    and only the nodes that need a flag carry it (matching the hand-authored
+    descriptor style)."""
     data = node.model_dump(exclude_none=True)
-    if not data.get("is_product"):
-        data.pop("is_product", None)
+    for flag in ("is_product", "external"):
+        if not data.get(flag):
+            data.pop(flag, None)
     return data
 
 
 def build_descriptors(
     manifest: dict,
     statement_name_fn: Callable[[str], str],
+    *,
+    pool_for: Callable[[dict], str | None] = _pool_from_config,
+    default_pool: str | None = None,
 ) -> dict[str, dict]:
     """Return ``{product_id: descriptor_dict}`` built from a dbt manifest.
 
     ``statement_name_fn`` maps a model name to its Flink statement name; it is
     injected so this core needs neither the confluent adapter nor a dbt profile.
+    ``pool_for(model)`` returns the model's Flink compute pool (defaults to the
+    dbt ``config.compute_pool_id``); ``default_pool`` is the fallback when a model
+    pins no pool (the connection-default pool, e.g. ``FLINK_COMPUTE_POOL_ID``).
     """
     models = [
         node
@@ -97,22 +110,27 @@ def build_descriptors(
 
         statement_nodes: list[GraphNode] = []
         source_nodes: dict[str, GraphNode] = {}
+        external_nodes: dict[str, GraphNode] = {}
         edges: list[GraphEdge] = []
+
+        def _stmt_node(model: dict, *, external: bool) -> GraphNode:
+            name = model["name"]
+            materialized = model.get("config", {}).get("materialized")
+            return GraphNode(
+                id=name,
+                type="statement",
+                label=name,
+                statement_name=statement_name_fn(name),
+                topic=name,
+                is_product=False if external else _is_product(model["path"]),
+                table_type=materialized if materialized in _TABLE_TYPES else None,
+                compute_pool_id=pool_for(model) or default_pool,
+                external=external,
+            )
 
         for model in product_models:
             name = model["name"]
-            materialized = model.get("config", {}).get("materialized")
-            statement_nodes.append(
-                GraphNode(
-                    id=name,
-                    type="statement",
-                    label=name,
-                    statement_name=statement_name_fn(name),
-                    topic=name,
-                    is_product=_is_product(model["path"]),
-                    table_type=materialized if materialized in _TABLE_TYPES else None,
-                )
-            )
+            statement_nodes.append(_stmt_node(model, external=False))
 
             for dep_uid in model.get("depends_on", {}).get("nodes", []):
                 if dep_uid in models_by_uid and _product_of(
@@ -132,10 +150,19 @@ def build_descriptors(
                         ),
                     )
                     edges.append(GraphEdge(source=src_id, target=name))
+                elif dep_uid in models_by_uid:
+                    # Cross-product dependency: the upstream model belongs to
+                    # another data product. Emit it as an external node (keeping
+                    # the graph connected) carrying the OWNING product's pool, so
+                    # this product's cost consolidation excludes it.
+                    dep = models_by_uid[dep_uid]
+                    external_nodes.setdefault(dep["name"], _stmt_node(dep, external=True))
+                    edges.append(GraphEdge(source=dep["name"], target=name))
 
         ordered_sources = [source_nodes[k] for k in sorted(source_nodes)]
+        ordered_external = [external_nodes[k] for k in sorted(external_nodes)]
         # Validate the whole graph as the backend would load it.
-        graph = Graph(nodes=[*ordered_sources, *statement_nodes], edges=edges)
+        graph = Graph(nodes=[*ordered_sources, *statement_nodes, *ordered_external], edges=edges)
 
         name = _humanize(product_id)
         products[product_id] = {

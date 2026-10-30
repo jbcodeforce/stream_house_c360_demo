@@ -19,6 +19,16 @@ class GraphNode(BaseModel):
     # statement scoped by statement_name. Only set on statement nodes; source
     # topics leave it None. Absent/None is treated as materialized_table.
     table_type: Literal["materialized_table", "streaming_table"] | None = None
+    # The Flink compute pool backing this statement (lfcp-...). Sourced from dbt
+    # (per-model config, else the default pool) by the descriptor builder. Used to
+    # attribute pipeline cost per pool and to scope live metrics per node. Only
+    # set on statement nodes; source topics leave it None.
+    compute_pool_id: str | None = None
+    # True when this statement node is an upstream import from ANOTHER data
+    # product (emitted so the graph stays connected). Excluded from this product's
+    # cost consolidation — its pool belongs to the owning product. Owned nodes
+    # leave it False.
+    external: bool = False
 
 
 class GraphEdge(BaseModel):

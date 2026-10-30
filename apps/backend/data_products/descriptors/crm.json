@@ -4,22 +4,14 @@
   "description": "Crm data product, generated from dbt models.",
   "nodes": [
     {
-      "id": "fct_c360_profile",
-      "type": "statement",
-      "label": "fct_c360_profile",
-      "statement_name": "dbt-streamhouse-fct-c360-profile-16382e",
-      "topic": "fct_c360_profile",
-      "is_product": true,
-      "table_type": "materialized_table"
-    },
-    {
       "id": "fct_crm_by_country",
       "type": "statement",
       "label": "fct_crm_by_country",
       "statement_name": "dbt-streamhouse-fct-crm-by-country-5ab51e",
       "topic": "fct_crm_by_country",
       "is_product": true,
-      "table_type": "streaming_table"
+      "table_type": "streaming_table",
+      "compute_pool_id": "lfcp-crm"
     },
     {
       "id": "fct_crm_by_gender",
@@ -28,7 +20,8 @@
       "statement_name": "dbt-streamhouse-fct-crm-by-gender-72cff3",
       "topic": "fct_crm_by_gender",
       "is_product": true,
-      "table_type": "streaming_table"
+      "table_type": "streaming_table",
+      "compute_pool_id": "lfcp-crm"
     },
     {
       "id": "fct_crm_by_generation",
@@ -37,7 +30,8 @@
       "statement_name": "dbt-streamhouse-fct-crm-by-generation-d948e6",
       "topic": "fct_crm_by_generation",
       "is_product": true,
-      "table_type": "streaming_table"
+      "table_type": "streaming_table",
+      "compute_pool_id": "lfcp-crm"
     },
     {
       "id": "fct_crm_by_segment",
@@ -46,7 +40,8 @@
       "statement_name": "dbt-streamhouse-fct-crm-by-segment-841e9c",
       "topic": "fct_crm_by_segment",
       "is_product": true,
-      "table_type": "streaming_table"
+      "table_type": "streaming_table",
+      "compute_pool_id": "lfcp-crm"
     },
     {
       "id": "fct_crm_summary",
@@ -55,18 +50,21 @@
       "statement_name": "dbt-streamhouse-fct-crm-summary-0ca81f",
       "topic": "fct_crm_summary",
       "is_product": true,
-      "table_type": "streaming_table"
+      "table_type": "streaming_table",
+      "compute_pool_id": "lfcp-crm"
+    },
+    {
+      "id": "fct_c360_profile",
+      "type": "statement",
+      "label": "fct_c360_profile",
+      "statement_name": "dbt-streamhouse-fct-c360-profile-16382e",
+      "topic": "fct_c360_profile",
+      "table_type": "materialized_table",
+      "compute_pool_id": "lfcp-c360",
+      "external": true
     }
   ],
   "edges": [
-     {
-      "source": "fct_c360_profile",
-      "target": "fct_crm_summary"
-    },
-    {
-      "source": "fct_c360_profile",
-      "target": "fct_crm_by_segment"
-    },
     {
       "source": "fct_c360_profile",
       "target": "fct_crm_by_country"
@@ -75,9 +73,17 @@
       "source": "fct_c360_profile",
       "target": "fct_crm_by_gender"
     },
-        {
+    {
       "source": "fct_c360_profile",
       "target": "fct_crm_by_generation"
+    },
+    {
+      "source": "fct_c360_profile",
+      "target": "fct_crm_by_segment"
+    },
+    {
+      "source": "fct_c360_profile",
+      "target": "fct_crm_summary"
     }
   ]
 }
