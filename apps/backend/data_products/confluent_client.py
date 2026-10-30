@@ -36,7 +36,7 @@ Confluent's Flink REST API docs if phases come back empty.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Protocol
 
 import httpx
@@ -85,6 +85,14 @@ _REQUEST_TIMEOUT_SECONDS = 5.0
 # below), NOT a bearer token.
 _METRICS_API_BASE_URL = "https://api.telemetry.confluent.cloud/v2/metrics/cloud/query"
 
+# Confluent Cloud Cost (Billing) API. Org-scoped; authenticates with the Cloud
+# API key/secret via HTTP Basic (same key as the Metrics API, but the Cost API
+# needs an org-level billing read role, not just MetricsViewer). Line items are
+# DAILY and carry the billed resource id in resource.id — for Flink that is the
+# compute pool id (lfcp-...). Pagination follows metadata.next (a full URL).
+_COST_API_URL = "https://api.confluent.cloud/billing/v1/costs"
+_COST_PAGE_SIZE = 10000
+
 
 # Metrics API filter field (dimension) that narrows an MT utilization query to
 # one materialized table. The MT utilization metrics carry both the
@@ -122,6 +130,10 @@ class ConfluentClientProtocol(Protocol):
     def get_statement_metrics(self, statement_name: str) -> dict: ...
 
     def get_materialized_table_metrics(self, mt_uid: str) -> dict: ...
+
+    def get_flink_pool_costs(self, start_date: date, end_date: date) -> dict[str, float]: ...
+
+    def get_compute_pool_cfu(self, pool_id: str) -> float | None: ...
 
 
 class ConfluentClient:
@@ -532,3 +544,76 @@ class ConfluentClient:
         )
 
         return metrics
+
+    def get_flink_pool_costs(self, start_date: date, end_date: date) -> dict[str, float]:
+        """Return ``{compute_pool_id: summed_amount}`` for Flink cost over the
+        ``[start_date, end_date]`` window.
+
+        Queries the Cost API, keeps only ``product == "FLINK"`` line items, and
+        sums their post-discount ``amount`` by ``resource.id`` (the compute pool
+        id). Follows ``metadata.next`` pagination. Authenticates with the Cloud
+        API key/secret via HTTP Basic.
+
+        Returns ``{}`` if the Cloud credentials are not configured, or on any
+        network/HTTP/parsing failure. Never raises.
+        """
+        s = self._settings
+        if not (s.CONFLUENT_CLOUD_API_KEY and s.CONFLUENT_CLOUD_API_SECRET):
+            logger.info("ConfluentClient: Cloud credentials incomplete; skipping cost lookup")
+            return {}
+
+        totals: dict[str, float] = {}
+        url: str | None = _COST_API_URL
+        params: dict | None = {
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "page_size": _COST_PAGE_SIZE,
+        }
+        try:
+            while url:
+                response = httpx.get(
+                    url,
+                    params=params,
+                    auth=(s.CONFLUENT_CLOUD_API_KEY, s.CONFLUENT_CLOUD_API_SECRET),
+                    timeout=_REQUEST_TIMEOUT_SECONDS,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                items = payload.get("data", []) if isinstance(payload, dict) else []
+                for item in items:
+                    if item.get("product") != "FLINK":
+                        continue
+                    pool_id = (item.get("resource") or {}).get("id")
+                    if not pool_id:
+                        continue
+                    totals[pool_id] = totals.get(pool_id, 0.0) + float(item.get("amount") or 0)
+                # metadata.next is a full URL carrying the page_token; it already
+                # includes start/end, so drop the explicit params after page one.
+                url = (payload.get("metadata") or {}).get("next") if isinstance(payload, dict) else None
+                params = None
+        except (httpx.HTTPError, ValueError):
+            logger.warning("ConfluentClient: get_flink_pool_costs failed", exc_info=True)
+            return {}
+
+        return totals
+
+    def get_compute_pool_cfu(self, pool_id: str) -> float | None:
+        """Return the current CFUs in use for one compute pool, or ``None``.
+
+        The ``compute_pool_utilization/current_cfus`` gauge, EQ-filtered on the
+        authorized compute pool id. Returns ``None`` if the Cloud credentials or
+        ``pool_id`` are missing, or on any failure. Never raises.
+        """
+        s = self._settings
+        if not (s.CONFLUENT_CLOUD_API_KEY and s.CONFLUENT_CLOUD_API_SECRET and pool_id):
+            return None
+        try:
+            return self._query_latest_value(
+                "io.confluent.flink/compute_pool_utilization/current_cfus",
+                [("resource.compute_pool.id", pool_id)],
+                s.CONFLUENT_CLOUD_API_KEY,
+                s.CONFLUENT_CLOUD_API_SECRET,
+            )
+        except (httpx.HTTPError, ValueError) as exc:
+            _log_metrics_error(exc, f"cost_cfu pool={pool_id}")
+            return None

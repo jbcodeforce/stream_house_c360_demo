@@ -9,7 +9,7 @@ made.
 from __future__ import annotations
 
 import types
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import httpx
 
@@ -565,3 +565,88 @@ def test_statement_phases_uses_flink_endpoint_with_basic_auth(monkeypatch):
         "org-1/environments/env-1/statements"
     )
     assert captured["auth"] == ("fk", "fs")
+
+
+# ---------------------------------------------------------------------------
+# Cost API client (Task 5): get_flink_pool_costs / get_compute_pool_cfu
+# ---------------------------------------------------------------------------
+
+
+def test_get_flink_pool_costs_sums_by_pool(monkeypatch):
+    def fake_get(url, params=None, auth=None, timeout=None):
+        return _Resp({
+            "data": [
+                {"product": "FLINK", "resource": {"id": "lfcp-a"}, "amount": 1.5},
+                {"product": "FLINK", "resource": {"id": "lfcp-a"}, "amount": 2.0},
+                {"product": "FLINK", "resource": {"id": "lfcp-b"}, "amount": 4.0},
+                {"product": "KAFKA", "resource": {"id": "lkc-x"}, "amount": 99.0},
+            ],
+            "metadata": {},
+        })
+
+    monkeypatch.setattr(confluent_client.httpx, "get", fake_get)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    totals = client.get_flink_pool_costs(date(2026, 10, 1), date(2026, 10, 30))
+
+    # Non-FLINK line items excluded; FLINK items summed per compute pool.
+    assert totals == {"lfcp-a": 3.5, "lfcp-b": 4.0}
+
+
+def test_get_flink_pool_costs_follows_pagination(monkeypatch):
+    calls: list[dict] = []
+
+    def fake_get(url, params=None, auth=None, timeout=None):
+        calls.append({"url": url, "params": params})
+        if len(calls) == 1:
+            return _Resp({
+                "data": [{"product": "FLINK", "resource": {"id": "lfcp-a"}, "amount": 1.0}],
+                "metadata": {"next": "https://api.confluent.cloud/billing/v1/costs?page_token=TOK"},
+            })
+        return _Resp({
+            "data": [{"product": "FLINK", "resource": {"id": "lfcp-a"}, "amount": 2.0}],
+            "metadata": {},
+        })
+
+    monkeypatch.setattr(confluent_client.httpx, "get", fake_get)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    totals = client.get_flink_pool_costs(date(2026, 10, 1), date(2026, 10, 30))
+
+    assert totals == {"lfcp-a": 3.0}  # both pages summed
+    assert len(calls) == 2
+    assert "page_token=TOK" in calls[1]["url"]  # second request followed the next token
+
+
+def test_get_flink_pool_costs_best_effort(monkeypatch):
+    def boom(*a, **k):
+        raise httpx.HTTPError("down")
+
+    monkeypatch.setattr(confluent_client.httpx, "get", boom)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+    assert client.get_flink_pool_costs(date(2026, 10, 1), date(2026, 10, 30)) == {}
+
+    # Missing credentials short-circuits with no HTTP call.
+    calls: list[int] = []
+    monkeypatch.setattr(confluent_client.httpx, "get", lambda *a, **k: calls.append(1))
+    client2 = confluent_client.ConfluentClient(settings_obj=_settings(CONFLUENT_CLOUD_API_KEY=None))
+    assert client2.get_flink_pool_costs(date(2026, 10, 1), date(2026, 10, 30)) == {}
+    assert calls == []
+
+
+def test_get_compute_pool_cfu_returns_latest(monkeypatch):
+    def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002
+        return _Resp({"data": [
+            {"timestamp": "2026-10-30T00:00:00Z", "value": 5.0},
+            {"timestamp": "2026-10-30T00:01:00Z", "value": 7.0},
+        ]})
+
+    monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+    assert client.get_compute_pool_cfu("lfcp-a") == 7.0
+
+    def boom(*a, **k):
+        raise httpx.HTTPError("x")
+
+    monkeypatch.setattr(confluent_client.httpx, "post", boom)
+    assert client.get_compute_pool_cfu("lfcp-a") is None
