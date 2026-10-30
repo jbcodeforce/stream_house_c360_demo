@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from data_products import service
-from data_products.models import DataProductSummary, Graph, NodeMetrics, StatusResponse
+from data_products.models import CostResponse, DataProductSummary, Graph, NodeMetrics, StatusResponse
 
 router = APIRouter(prefix="/data-products", tags=["data-products"])
 
@@ -29,6 +29,14 @@ def get_status(product_id: str) -> StatusResponse:
     if status is None:
         raise HTTPException(status_code=404, detail="Data product not found")
     return status
+
+
+@router.get("/{product_id}/cost", response_model=CostResponse, status_code=200)
+def get_cost(product_id: str) -> CostResponse:
+    cost = service.get_cost(product_id)
+    if cost is None:
+        raise HTTPException(status_code=404, detail="Data product not found")
+    return cost
 
 
 @router.get("/{product_id}/nodes/{node_id}/metrics", response_model=NodeMetrics, status_code=200)

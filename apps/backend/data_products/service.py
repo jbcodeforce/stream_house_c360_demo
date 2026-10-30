@@ -8,7 +8,7 @@ modules: the router only ever calls into this module, never into
 from __future__ import annotations
 
 from data_products import descriptor, providers
-from data_products.models import DataProductSummary, Graph, NodeMetrics, StatusResponse
+from data_products.models import CostResponse, DataProductSummary, Graph, NodeMetrics, StatusResponse
 
 
 def list_products() -> list[DataProductSummary]:
@@ -24,6 +24,13 @@ def get_status(product_id: str) -> StatusResponse | None:
     if graph is None:
         return None
     return providers.get_provider().get_status(graph)
+
+
+def get_cost(product_id: str) -> CostResponse | None:
+    graph = descriptor.get_graph(product_id)
+    if graph is None:
+        return None
+    return providers.get_provider().get_cost(graph)
 
 
 def get_node_metrics(product_id: str, node_id: str) -> NodeMetrics | None:

@@ -84,6 +84,20 @@ def test_source_node_metrics_returns_200_unknown_not_500(client):
     assert r.status_code == 200 and r.json()["phase"] == "UNKNOWN"
 
 
+def test_cost_route_returns_cost_response(client):
+    r = client.get("/api/v1/data-products/c360/cost")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["available"] is True
+    assert body["amount"] > 0
+    assert body["cfu"] is not None
+    assert "lfcp-c360" in body["pool_ids"]
+
+
+def test_unknown_product_cost_404(client):
+    assert client.get("/api/v1/data-products/nope/cost").status_code == 404
+
+
 def test_unknown_product_graph_404(client):
     assert client.get("/api/v1/data-products/nope/graph").status_code == 404
 
