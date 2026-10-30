@@ -78,3 +78,18 @@ resource "confluent_rtce_topic" "fct_c360_profile" {
     id = local.kafka_cluster_id
   }
 }
+
+resource "confluent_rtce_topic" "fct_crm_summary" {
+  cloud       = var.cloud_provider
+  region      = var.aws_region_primary
+  topic_name  = var.crm_summary_topic
+  description = "CRM analytics"
+
+  environment {
+    id = local.environment_id
+  }
+
+  kafka_cluster {
+    id = local.kafka_cluster_id
+  }
+}

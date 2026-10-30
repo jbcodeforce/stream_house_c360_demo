@@ -60,3 +60,10 @@ variable "profile_topic" {
   description = "Name of the materialized (upsert) topic to expose via the Lightning Query API"
   default     = "fct_c360_profile"
 }
+
+variable "crm_summary_topic" {
+  type        = string
+  description = "Name of the topic to expose via the Lightning Query API"
+  default     = "fct_crm_summary"
+}
+
