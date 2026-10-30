@@ -12,6 +12,18 @@ export interface GraphNode {
   statement_name: string | null
   topic: string | null
   is_product: boolean
+  compute_pool_id?: string | null
+  external?: boolean
+}
+
+export interface Cost {
+  available: boolean
+  amount: number
+  currency: string
+  cfu: number | null
+  period_start: string | null
+  period_end: string | null
+  pool_ids: string[]
 }
 
 export interface GraphEdge {

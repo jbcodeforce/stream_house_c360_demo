@@ -1,4 +1,4 @@
-import type { DataProduct, Graph, NodeMetrics, StatusResponse } from '../types/dataProduct'
+import type { Cost, DataProduct, Graph, NodeMetrics, StatusResponse } from '../types/dataProduct'
 import { request } from './client'
 
 export function listDataProducts(): Promise<DataProduct[]> {
@@ -15,4 +15,8 @@ export function getStatus(id: string): Promise<StatusResponse> {
 
 export function getNodeMetrics(id: string, nodeId: string): Promise<NodeMetrics> {
   return request<NodeMetrics>(`/data-products/${id}/nodes/${nodeId}/metrics`)
+}
+
+export function getCost(id: string): Promise<Cost> {
+  return request<Cost>(`/data-products/${id}/cost`)
 }

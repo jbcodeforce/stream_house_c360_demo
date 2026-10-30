@@ -10,13 +10,16 @@ import {
 import '@xyflow/react/dist/style.css'
 import { X } from 'lucide-react'
 import { ApiError } from '../api/client'
-import { getGraph, getNodeMetrics, getStatus, listDataProducts } from '../api/dataProducts'
+import { getCost, getGraph, getNodeMetrics, getStatus, listDataProducts } from '../api/dataProducts'
 import StatementNode from '../components/StatementNode'
 import type { StatementNodeData } from '../components/StatementNode'
 import { layoutGraph } from '../lib/graphLayout'
-import type { Graph, NodeMetrics, NodeStatus, StatusResponse } from '../types/dataProduct'
+import { formatCurrency } from '../lib/format'
+import type { Cost, Graph, NodeMetrics, NodeStatus, StatusResponse } from '../types/dataProduct'
 
 const POLL_MS = 5000
+// Cost data lags ~a day and barely moves, so poll it far less often than status.
+const COST_POLL_MS = 300_000
 const nodeTypes = { statement: StatementNode }
 
 function fmt(value: number | string | null | undefined): string {
@@ -61,6 +64,11 @@ export default function StatementGraphPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [metrics, setMetrics] = useState<NodeMetrics | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(false)
+
+  // Month-to-date pipeline cost. Null until loaded / when unavailable — the
+  // banner renders only when available, never $0, and a failure never affects
+  // the graph (cost is purely additive).
+  const [cost, setCost] = useState<Cost | null>(null)
 
   const selectedIdRef = useRef<string | null>(null)
   useEffect(() => {
@@ -174,6 +182,29 @@ export default function StatementGraphPage() {
     return () => clearInterval(handle)
   }, [])
 
+  // Poll pipeline cost on a slow cadence (cost lags ~a day). A failure leaves the
+  // banner hidden and never touches the graph.
+  useEffect(() => {
+    if (!id) return
+    let active = true
+
+    async function pollCost() {
+      try {
+        const next = await getCost(id!)
+        if (active) setCost(next)
+      } catch {
+        if (active) setCost(null)
+      }
+    }
+
+    void pollCost()
+    const handle = setInterval(() => void pollCost(), COST_POLL_MS)
+    return () => {
+      active = false
+      clearInterval(handle)
+    }
+  }, [id])
+
   const handleSelect = useCallback(
     (nodeId: string) => {
       setSelectedId(nodeId)
@@ -235,6 +266,15 @@ export default function StatementGraphPage() {
           <h1>{productName ?? 'Statement Graph'}</h1>
           <p className="page-subtitle">Statement graph</p>
         </div>
+        {cost?.available && (
+          <div className="cost-banner" title={cost.pool_ids.join(', ')}>
+            <span className="cost-banner__amount">{formatCurrency(cost.amount)}</span>
+            <span className="cost-banner__label">this month</span>
+            {cost.cfu != null && (
+              <span className="cost-banner__cfu">· {Math.round(cost.cfu)} CFU</span>
+            )}
+          </div>
+        )}
         <Link to="/data-products" className="btn btn--secondary">
           Back
         </Link>

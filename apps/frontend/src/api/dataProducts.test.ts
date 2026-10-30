@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import * as client from './client'
-import { getGraph, getNodeMetrics, getStatus, listDataProducts } from './dataProducts'
+import { getCost, getGraph, getNodeMetrics, getStatus, listDataProducts } from './dataProducts'
 
 afterEach(() => vi.restoreAllMocks())
 
@@ -27,5 +27,11 @@ describe('dataProducts api', () => {
     const spy = vi.spyOn(client, 'request').mockResolvedValue({})
     await getNodeMetrics('c360', 'src_customers')
     expect(spy).toHaveBeenCalledWith('/data-products/c360/nodes/src_customers/metrics')
+  })
+
+  it('getCost GETs /data-products/:id/cost', async () => {
+    const spy = vi.spyOn(client, 'request').mockResolvedValue({})
+    await getCost('c360')
+    expect(spy).toHaveBeenCalledWith('/data-products/c360/cost')
   })
 })
