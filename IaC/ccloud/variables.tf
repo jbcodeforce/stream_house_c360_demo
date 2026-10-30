@@ -66,3 +66,25 @@ variable "flink_max_cfu" {
   description = "Maximum CFUs (Confluent Flink Units) for the Flink compute pool"
   default     = 50
 }
+
+variable "flink_crm_max_cfu" {
+  type        = number
+  description = "Maximum CFUs (Confluent Flink Units) for the crm Flink compute pool"
+  default     = 50
+}
+
+################################################################################
+# Cost API (billing) access
+################################################################################
+
+variable "cost_api_principal_id" {
+  type        = string
+  description = "Principal id (service account or user, e.g. sa-xxxxxx / u-xxxxxx) that owns CONFLUENT_CLOUD_API_KEY and is used by the backend Cost API. Leave null to skip the billing role binding (e.g. when that principal is already OrganizationAdmin)."
+  default     = null
+}
+
+variable "cost_api_billing_role" {
+  type        = string
+  description = "Org-level role granting Cost API (GET /billing/v1/costs) read access, bound to cost_api_principal_id. OrganizationAdmin grants it; override if your org exposes a narrower billing-read role."
+  default     = "OrganizationAdmin"
+}

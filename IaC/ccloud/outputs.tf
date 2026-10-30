@@ -60,8 +60,13 @@ output "sa_name" {
 # Flink
 # ------------------------------------------------------
 output "flink_compute_pool_id" {
-  description = "ID of the Flink compute pool"
+  description = "ID of the Flink compute pool (c360 / default)"
   value       = confluent_flink_compute_pool.pool.id
+}
+
+output "flink_crm_compute_pool_id" {
+  description = "ID of the crm Flink compute pool"
+  value       = confluent_flink_compute_pool.crm_pool.id
 }
 
 output "flink_runner_sa_id" {
