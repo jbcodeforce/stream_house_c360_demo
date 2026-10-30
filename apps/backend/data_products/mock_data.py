@@ -75,3 +75,9 @@ STATEMENT_FIXTURES: dict[str, tuple[int, float, float, float, str]] = {
 # non-zero backlog.
 LAGGING_NODE_ID = "src_transactions"
 LAGGING_PENDING_RECORDS = 15_000
+
+# Synthetic $/CFU/month rate for mock-mode pipeline cost (MockProvider.get_cost),
+# so the cost banner demos without live cloud + billing access. Roughly a Flink
+# CFU-hour (~$0.09) over a 30-day month; the exact value only needs to be
+# plausible, not billed.
+MOCK_CFU_DOLLARS_PER_MONTH = 64.80

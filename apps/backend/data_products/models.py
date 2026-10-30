@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel
@@ -64,6 +65,26 @@ class StatusRollup(BaseModel):
 class StatusResponse(BaseModel):
     statements: list[NodeStatus]
     rollup: StatusRollup
+
+
+class CostResponse(BaseModel):
+    """Month-to-date Flink cost for a data product's pipeline.
+
+    ``available`` is False when there is no cost to show (no owned pools, or the
+    Cost API returned nothing for them — a lagging day, missing billing access,
+    or a failure): the frontend hides the banner rather than rendering ``$0``.
+    ``amount`` sums the billed cost of the distinct compute pools the product's
+    own (non-external) statements use; ``cfu`` is the current total CFUs across
+    those pools. ``pool_ids`` are the pools that were consolidated.
+    """
+
+    available: bool
+    amount: float = 0.0
+    currency: str = "USD"
+    cfu: float | None = None
+    period_start: date | None = None
+    period_end: date | None = None
+    pool_ids: list[str] = []
 
 
 class NodeMetrics(BaseModel):

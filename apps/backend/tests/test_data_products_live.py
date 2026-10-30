@@ -27,12 +27,16 @@ class _FakeClient:
         mt_tables: dict[str, dict] | None = None,
         mt_metrics: dict | None = None,
         statements: dict[str, dict] | None = None,
+        pool_costs: dict[str, float] | None = None,
+        pool_cfu: dict[str, float] | None = None,
     ) -> None:
         self._phases = phases or {}
         self._metrics = metrics or {}
         self._mt_tables = mt_tables or {}
         self._mt_metrics = mt_metrics or {}
         self._statements = statements or {}
+        self._pool_costs = pool_costs or {}
+        self._pool_cfu = pool_cfu or {}
 
     def list_statement_phases(self) -> dict[str, str]:
         return dict(self._phases)
@@ -48,6 +52,12 @@ class _FakeClient:
 
     def get_materialized_table_metrics(self, mt_uid: str) -> dict:
         return dict(self._mt_metrics)
+
+    def get_flink_pool_costs(self, start_date, end_date) -> dict[str, float]:
+        return dict(self._pool_costs)
+
+    def get_compute_pool_cfu(self, pool_id: str):
+        return self._pool_cfu.get(pool_id)
 
 
 class _RaisingClient:
@@ -71,6 +81,12 @@ class _RaisingClient:
     def get_materialized_table_metrics(self, mt_uid: str) -> dict:
         raise self._exc
 
+    def get_flink_pool_costs(self, start_date, end_date) -> dict[str, float]:
+        raise self._exc
+
+    def get_compute_pool_cfu(self, pool_id: str):
+        raise self._exc
+
 
 def _fake_client(
     phases: dict[str, str] | None = None,
@@ -78,10 +94,13 @@ def _fake_client(
     mt_tables: dict[str, dict] | None = None,
     mt_metrics: dict | None = None,
     statements: dict[str, dict] | None = None,
+    pool_costs: dict[str, float] | None = None,
+    pool_cfu: dict[str, float] | None = None,
 ) -> _FakeClient:
     return _FakeClient(
         phases=phases, metrics=metrics, mt_tables=mt_tables,
         mt_metrics=mt_metrics, statements=statements,
+        pool_costs=pool_costs, pool_cfu=pool_cfu,
     )
 
 
@@ -650,3 +669,61 @@ def test_get_compute_pool_cfu_returns_latest(monkeypatch):
 
     monkeypatch.setattr(confluent_client.httpx, "post", boom)
     assert client.get_compute_pool_cfu("lfcp-a") is None
+
+
+# ---------------------------------------------------------------------------
+# LiveProvider.get_cost (Task 6)
+# ---------------------------------------------------------------------------
+
+
+def _crm_like_graph() -> Graph:
+    """An owned crm statement (lfcp-crm) plus an imported/external c360 upstream
+    (lfcp-c360), so cost attribution can be asserted to exclude the external pool."""
+    return Graph(
+        nodes=[
+            GraphNode(id="owned", type="statement", label="owned",
+                      statement_name="s1", topic="owned", is_product=True,
+                      compute_pool_id="lfcp-crm", table_type="streaming_table"),
+            GraphNode(id="imported", type="statement", label="imported",
+                      statement_name="s2", topic="imported", external=True,
+                      compute_pool_id="lfcp-c360", table_type="materialized_table"),
+        ],
+        edges=[],
+    )
+
+
+def test_live_get_cost_sums_owned_pools_only():
+    client = _fake_client(pool_costs={"lfcp-crm": 10.0, "lfcp-c360": 5.0}, pool_cfu={"lfcp-crm": 3.0})
+    cost = providers.LiveProvider(client=client).get_cost(_crm_like_graph())
+    assert cost.amount == 10.0  # external lfcp-c360 excluded
+    assert cost.pool_ids == ["lfcp-crm"]
+    assert cost.available is True
+    assert cost.cfu == 3.0
+
+
+def test_live_get_cost_unavailable_when_no_matching_costs():
+    client = _fake_client(pool_costs={})  # 403 / data lag -> nothing for our pool
+    cost = providers.LiveProvider(client=client).get_cost(_crm_like_graph())
+    assert cost.available is False
+    assert cost.amount == 0.0
+
+
+def test_live_get_cost_partial_month_available():
+    client = _fake_client(pool_costs={"lfcp-crm": 1.0})
+    cost = providers.LiveProvider(client=client).get_cost(_crm_like_graph())
+    assert cost.available is True
+    assert cost.amount == 1.0
+
+
+def test_live_get_cost_best_effort_on_raise():
+    client = _raising_client(httpx.ConnectError("boom"))
+    cost = providers.LiveProvider(client=client).get_cost(_crm_like_graph())
+    assert cost.available is False  # client failure degrades, never raises
+
+
+def test_live_get_cost_no_owned_pools_is_unavailable():
+    graph = Graph(nodes=[GraphNode(id="imported", type="statement", label="imported",
+                                   statement_name="s", external=True, compute_pool_id="lfcp-c360")],
+                  edges=[])
+    cost = providers.LiveProvider(client=_fake_client(pool_costs={"lfcp-c360": 9.0})).get_cost(graph)
+    assert cost.available is False and cost.pool_ids == []

@@ -10,12 +10,19 @@ immediately.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Protocol
 
 from data_products import mock_data
 from data_products.confluent_client import ConfluentClient, ConfluentClientProtocol
-from data_products.models import Graph, NodeMetrics, NodeStatus, StatusResponse, StatusRollup
+from data_products.models import (
+    CostResponse,
+    Graph,
+    NodeMetrics,
+    NodeStatus,
+    StatusResponse,
+    StatusRollup,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,10 +50,33 @@ def _uptime_seconds(created_at: str | None, now: datetime | None = None) -> int 
     return int(delta) if delta >= 0 else None
 
 
+def _owned_pool_ids(graph: Graph) -> list[str]:
+    """Sorted, distinct compute pool ids used by this product's OWN statements.
+
+    External (cross-product upstream) nodes are excluded so a product's cost
+    counts only the pools it owns — their pool belongs to the owning product.
+    """
+    return sorted(
+        {
+            node.compute_pool_id
+            for node in graph.nodes
+            if node.type == "statement" and not node.external and node.compute_pool_id
+        }
+    )
+
+
+def _month_to_date(now: datetime | None = None) -> tuple[date, date]:
+    """``(first_of_month, today)`` in UTC — the Cost API window for "this month"."""
+    today = (now or datetime.now(timezone.utc)).date()
+    return today.replace(day=1), today
+
+
 class StatusProvider(Protocol):
     def get_status(self, graph: Graph) -> StatusResponse: ...
 
     def get_metrics(self, graph: Graph, node_id: str) -> NodeMetrics: ...
+
+    def get_cost(self, graph: Graph) -> CostResponse: ...
 
 
 class MockProvider:
@@ -96,6 +126,26 @@ class MockProvider:
             pending_records=pending_records,
             compute_pool_cfu=cfu,
             sql=sql,
+        )
+
+    def get_cost(self, graph: Graph) -> CostResponse:
+        """Synthetic month-to-date cost from the CFU fixtures, so the banner
+        demos with no live cloud/billing access. CFUs sum the fixture CFU of the
+        product's own (non-external) statement nodes; the dollar amount applies a
+        synthetic per-CFU monthly rate."""
+        cfu = sum(
+            mock_data.STATEMENT_FIXTURES[node.id][3]
+            for node in graph.nodes
+            if node.type == "statement" and not node.external and node.id in mock_data.STATEMENT_FIXTURES
+        )
+        start, end = _month_to_date()
+        return CostResponse(
+            available=True,
+            amount=round(cfu * mock_data.MOCK_CFU_DOLLARS_PER_MONTH, 2),
+            cfu=cfu or None,
+            period_start=start,
+            period_end=end,
+            pool_ids=_owned_pool_ids(graph),
         )
 
 
@@ -264,6 +314,49 @@ class LiveProvider:
             pending_records=raw.get("pending_records"),
             compute_pool_cfu=raw.get("compute_pool_cfu"),
             sql=raw.get("sql"),
+        )
+
+    def _safe_pool_costs(self, start: date, end: date) -> dict[str, float]:
+        try:
+            return self._client.get_flink_pool_costs(start, end)
+        except Exception:  # noqa: BLE001 — best-effort: never let this surface
+            logger.warning("LiveProvider: get_flink_pool_costs failed; cost unavailable", exc_info=True)
+            return {}
+
+    def _safe_pool_cfu(self, pool_id: str) -> float | None:
+        try:
+            return self._client.get_compute_pool_cfu(pool_id)
+        except Exception:  # noqa: BLE001 — best-effort: never let this surface
+            logger.warning("LiveProvider: get_compute_pool_cfu failed for pool=%s", pool_id, exc_info=True)
+            return None
+
+    def get_cost(self, graph: Graph) -> CostResponse:
+        """Month-to-date Flink cost for this product's pipeline.
+
+        Sums the Cost API's billed amount for the distinct pools the product's own
+        (non-external) statements use. ``available`` is False when the product
+        owns no pool or the Cost API returned nothing for its pools (lag, missing
+        billing access, or failure) so the banner hides rather than showing $0.
+        """
+        pool_ids = _owned_pool_ids(graph)
+        start, end = _month_to_date()
+        if not pool_ids:
+            return CostResponse(available=False, period_start=start, period_end=end)
+
+        costs = self._safe_pool_costs(start, end)
+        amount = sum(costs[p] for p in pool_ids if p in costs)
+        available = any(p in costs for p in pool_ids)
+
+        cfu_values = [c for c in (self._safe_pool_cfu(p) for p in pool_ids) if c is not None]
+        cfu = sum(cfu_values) if cfu_values else None
+
+        return CostResponse(
+            available=available,
+            amount=amount,
+            cfu=cfu,
+            period_start=start,
+            period_end=end,
+            pool_ids=pool_ids,
         )
 
 

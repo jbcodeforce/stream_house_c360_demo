@@ -68,3 +68,19 @@ def test_factory_selects_mock_lag(monkeypatch):
     import importlib; import config; importlib.reload(config)
     prov = providers.get_provider()
     assert isinstance(prov, providers.MockProvider) and prov.lagging is True
+
+
+def test_mock_get_cost_matches_fixture_cfu():
+    from data_products import mock_data
+
+    graph = descriptor.get_graph("c360")
+    cost = providers.MockProvider(lagging=False).get_cost(graph)
+    expected_cfu = sum(
+        mock_data.STATEMENT_FIXTURES[n.id][3]
+        for n in graph.nodes
+        if n.type == "statement" and not n.external and n.id in mock_data.STATEMENT_FIXTURES
+    )
+    assert cost.available is True
+    assert cost.cfu == expected_cfu
+    assert cost.amount == round(expected_cfu * mock_data.MOCK_CFU_DOLLARS_PER_MONTH, 2)
+    assert cost.pool_ids == ["lfcp-c360"]  # owned pools from the graph's statement nodes
