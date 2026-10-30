@@ -115,6 +115,8 @@ class ConfluentClientProtocol(Protocol):
 
     def list_statement_phases(self) -> dict[str, str]: ...
 
+    def list_statements(self) -> dict[str, dict]: ...
+
     def list_materialized_tables(self) -> dict[str, dict]: ...
 
     def get_statement_metrics(self, statement_name: str) -> dict: ...
@@ -169,6 +171,52 @@ class ConfluentClient:
             if name and phase:
                 phases[name] = phase
         return phases
+
+    def list_statements(self) -> dict[str, dict]:
+        """Return ``{name: {"phase", "uid", "sql"}}`` for every Flink statement.
+
+        Same GET as ``list_statement_phases`` but carries the fields the metrics
+        drill-down needs: the ``uid`` (``metadata.uid``) and the defining SQL
+        (``spec.statement``) — the latter is how a streaming-table node fills its
+        drill-down SQL, mirroring how a materialized table reads ``spec.query``.
+        ``sql`` is ``None`` when the statement omits it.
+
+        Returns ``{}`` if live credentials are not configured, or on any
+        network/HTTP/parsing failure.
+        """
+        s = self._settings
+        if not (s.FLINK_REST_ENDPOINT and s.FLINK_API_KEY and s.FLINK_API_SECRET and s.FLINK_ORG_ID and s.FLINK_ENV_ID):
+            logger.info("ConfluentClient: Flink settings incomplete; skipping statement lookup")
+            return {}
+
+        url = (
+            f"{s.FLINK_REST_ENDPOINT.rstrip('/')}/sql/v1/organizations/"
+            f"{s.FLINK_ORG_ID}/environments/{s.FLINK_ENV_ID}/statements"
+        )
+        try:
+            response = httpx.get(
+                url,
+                auth=(s.FLINK_API_KEY, s.FLINK_API_SECRET),
+                timeout=_REQUEST_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (httpx.HTTPError, ValueError):
+            logger.warning("ConfluentClient: list_statements failed", exc_info=True)
+            return {}
+
+        statements: dict[str, dict] = {}
+        for item in payload.get("data", []) if isinstance(payload, dict) else []:
+            name = item.get("name")
+            if not name:
+                continue
+            statements[name] = {
+                "phase": (item.get("status") or {}).get("phase"),
+                "uid": (item.get("metadata") or {}).get("uid"),
+                # The statement's defining SQL (spec.statement), for the drill-down panel.
+                "sql": (item.get("spec") or {}).get("statement"),
+            }
+        return statements
 
     def list_materialized_tables(self) -> dict[str, dict]:
         """Return ``{name: {"phase", "uid", "version", "sql"}}`` for every materialized table.
@@ -298,16 +346,81 @@ class ConfluentClient:
                 _log_metrics_error(exc, f"{metric} {context}")
         return rates
 
+    @staticmethod
+    def _latest_point_value(group: dict) -> float | None:
+        """The most recent value in one GROUPED result entry.
+
+        A GROUPED entry carries a ``points`` list (``{timestamp, value}``); some
+        responses collapse a single interval to a flat ``value`` instead. Return
+        the latest point's value, or the flat value, or ``None`` when empty.
+        """
+        points = group.get("points")
+        if points:
+            latest = max(points, key=lambda p: p.get("timestamp", ""))
+            return latest.get("value")
+        return group.get("value")
+
+    def _query_statement_metric_grouped(
+        self,
+        metric: str,
+        api_key: str,
+        api_secret: str,
+    ) -> dict[str, float]:
+        """Return ``{statement_name: latest_value}`` for one metric across the
+        compute pool.
+
+        Unlike the MT uid (a filterable authorized resource),
+        ``resource.flink_statement.name`` is only a *group-by* dimension — an EQ
+        filter on it names no authorized resource and the query comes back empty.
+        So the per-statement metrics filter by the authorized compute pool and
+        GROUP BY the statement name, and the caller selects the one statement it
+        wants from the result. Mirrors the shift_left ``metric_mgr`` pattern.
+
+        Raises on network/HTTP/parse failure — callers isolate each query.
+        """
+        body = {
+            "aggregations": [{"metric": metric}],
+            "filter": {
+                "field": "resource.compute_pool.id",
+                "op": "EQ",
+                "value": self._settings.FLINK_COMPUTE_POOL_ID,
+            },
+            "granularity": "PT1M",
+            "format": "GROUPED",
+            "group_by": ["resource.compute_pool.id", "resource.flink_statement.name"],
+            "intervals": [self._recent_interval()],
+            "limit": 1000,
+        }
+        response = httpx.post(
+            _METRICS_API_BASE_URL,
+            json=body,
+            auth=(api_key, api_secret),
+            timeout=_REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        groups = payload.get("data", []) if isinstance(payload, dict) else []
+        values: dict[str, float] = {}
+        for group in groups:
+            name = group.get("resource.flink_statement.name")
+            if not name:
+                continue
+            value = self._latest_point_value(group)
+            if value is not None:
+                values[name] = value
+        return values
+
     def get_statement_metrics(self, statement_name: str) -> dict:
         """Return raw metric fields for one statement; any key may be absent.
 
-        Recognized keys: ``pending_records`` (statement-scoped lag),
-        ``compute_pool_cfu`` (pool-scoped CFUs in use), and
+        Recognized keys: ``pending_records`` (the lag / "messages behind"
+        metric), ``compute_pool_cfu`` (pool-scoped CFUs in use), and
         ``messages_in_per_sec``/``messages_out_per_sec`` (from the records-in/out
-        counters, scoped to the pool + statement name). These live on different
-        resource dimensions, so they are separately-scoped queries, each isolated
-        so one failing doesn't drop the others. ``uptime_seconds`` is derived
-        from the statement, not a metric.
+        counters). The per-statement metrics are queried pool-scoped + GROUPED by
+        statement name (``resource.flink_statement.name`` is not EQ-filterable —
+        see ``_query_statement_metric_grouped``), then this statement is picked
+        out of the grouped result; the pool CFU is a separate pool-only query.
+        Each query is isolated so one failing doesn't drop the others.
 
         Returns ``{}`` if live credentials are not configured. Never raises.
         """
@@ -318,19 +431,15 @@ class ConfluentClient:
 
         metrics: dict = {}
 
-        # Statement-scoped: pending records (the lag / "messages behind" metric).
+        # Pending records (the lag metric): grouped by statement, pick this one.
         try:
-            pending = self._query_latest_value(
+            pending_by_stmt = self._query_statement_metric_grouped(
                 "io.confluent.flink/pending_records",
-                [
-                    ("resource.compute_pool.id", s.FLINK_COMPUTE_POOL_ID),
-                    ("resource.flink_statement.name", statement_name),
-                ],
                 s.CONFLUENT_CLOUD_API_KEY,
                 s.CONFLUENT_CLOUD_API_SECRET,
             )
-            if pending is not None:
-                metrics["pending_records"] = int(pending)
+            if statement_name in pending_by_stmt:
+                metrics["pending_records"] = int(pending_by_stmt[statement_name])
         except (httpx.HTTPError, ValueError) as exc:
             _log_metrics_error(exc, f"statement={statement_name}")
 
@@ -347,19 +456,21 @@ class ConfluentClient:
         except (httpx.HTTPError, ValueError) as exc:
             _log_metrics_error(exc, f"pool={s.FLINK_COMPUTE_POOL_ID}")
 
-        # Throughput: records-in/out per second, scoped to the authorized pool
-        # AND this statement.
-        metrics.update(
-            self._records_rates(
-                [
-                    ("resource.compute_pool.id", s.FLINK_COMPUTE_POOL_ID),
-                    ("resource.flink_statement.name", statement_name),
-                ],
-                s.CONFLUENT_CLOUD_API_KEY,
-                s.CONFLUENT_CLOUD_API_SECRET,
-                f"statement={statement_name}",
-            )
-        )
+        # Throughput: records-in/out per second, grouped by statement, pick this
+        # one. The counter's latest point is records-per-PT1M-interval, so divide
+        # by the interval length for a per-second rate.
+        for field, metric in (
+            ("messages_in_per_sec", _RECORDS_IN_METRIC),
+            ("messages_out_per_sec", _RECORDS_OUT_METRIC),
+        ):
+            try:
+                by_stmt = self._query_statement_metric_grouped(
+                    metric, s.CONFLUENT_CLOUD_API_KEY, s.CONFLUENT_CLOUD_API_SECRET
+                )
+                if statement_name in by_stmt:
+                    metrics[field] = by_stmt[statement_name] / _GRANULARITY_SECONDS
+            except (httpx.HTTPError, ValueError) as exc:
+                _log_metrics_error(exc, f"{metric} statement={statement_name}")
 
         return metrics
 

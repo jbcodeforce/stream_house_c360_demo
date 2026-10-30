@@ -73,36 +73,13 @@ def test_query_ms_present_on_payloads(client):
     agg = client.get("/api/v1/analytics/c360-profile").json()
     assert "query_ms" in agg and isinstance(agg["query_ms"], (int, float)) and agg["query_ms"] >= 0
 
-    search = client.get("/api/v1/analytics/c360-profile/search", params={"name": "brennan"}).json()
-    assert search["query_ms"] >= 0
-
     prof = client.get(f"/api/v1/analytics/c360-profile/customer/{_THOMAS_ID}").json()
     assert prof["query_ms"] >= 0
 
 
-# --- Customer lookup (by-name search + by-id profile) ---------------------
+# --- Customer by-id profile (name-to-id resolution lives in /customers) ----
 
 _THOMAS_ID = "00000000-0000-0000-0000-678901234568"
-
-
-def test_search_by_name_returns_match(client):
-    r = client.get("/api/v1/analytics/c360-profile/search", params={"name": "brennan"})
-    assert r.status_code == 200
-    body = r.json()
-    assert body["query"] == "brennan"
-    assert [m["customer_id"] for m in body["matches"]] == [_THOMAS_ID]
-    assert body["matches"][0]["last_name"] == "Brennan"
-
-
-def test_search_is_case_insensitive_substring(client):
-    r = client.get("/api/v1/analytics/c360-profile/search", params={"name": "SHAR"})
-    ids = [m["last_name"] for m in r.json()["matches"]]
-    assert ids == ["Sharma"]
-
-
-def test_search_blank_returns_no_matches(client):
-    r = client.get("/api/v1/analytics/c360-profile/search", params={"name": "   "})
-    assert r.status_code == 200 and r.json()["matches"] == []
 
 
 def test_customer_profile_by_id(client):
@@ -128,12 +105,6 @@ def test_customer_profile_malformed_id_404(client):
 
 
 # --- RTCE / Lightning endpoints (mock mode mirrors the Flink endpoints) ----
-
-
-def test_rtce_search_by_name(client):
-    r = client.get("/api/v1/analytics/c360-profile/rtce/search", params={"name": "brennan"})
-    assert r.status_code == 200
-    assert [m["customer_id"] for m in r.json()["matches"]] == [_THOMAS_ID]
 
 
 def test_rtce_customer_profile_by_id(client):

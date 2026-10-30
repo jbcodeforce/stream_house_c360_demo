@@ -1,6 +1,6 @@
 # Web App and Backend Design
 
-This note is for explaining the code of the backend and vite application.
+This note is to explain the backend design and implementation, for code maintenance and also explaining some integration to Confluent Cloud Streamhouse capabilities
 
 ## Requirements addressed
  
@@ -8,21 +8,23 @@ This note is for explaining the code of the backend and vite application.
 * [x] Pages for accounts CRUD operations
 * [x] Pages for transactions CR operations
 * [x] Local persistence with Postgresql database running in container
-* [x] Kafka producer to write Debezium schema compliant records.
+* [x] Kafka producer to write Debezium schema compliant records, to bypass CDC debezium during local demonstration
 * [x] TDD for backend and frontend
 * [x] Run snapshot queries from UI to backend to Confluent cloud on top of fact tables
 * [x] Execute lightning query from a backend and display result to Frontend
+* [x] Chat interface to demonstrate querying business data using Real-time context engine.
 
 ## Design
 
-The architecture is:
+The solution architecture looks like in the figure below:
 
 ![](./diagrams/stream-cut1-local-arch.drawio.png)
 
-The stack is a classic single-page app over a REST backend, with Kafka/CDC as a
-secondary sink:
+The frontend is a classic single-page app over a REST backend.
 
 ![](./diagrams/web_app_flow.drawio.png)
+
+The backend is organized in different layers to facilitate testing and adopting clear separation of concern. The structure mock a microservice implementation, which means it will be easy to separate the customer, account, transactions, analytics and chat into separate code repository and package them as 12-factors application.
 
 ### Frontend ↔ backend integration
 
@@ -39,8 +41,7 @@ On the backend side, `main.py` mounts every domain router under `/api/v1` and en
 
 ### Backend design pattern (models · DAO · producer · inventory)
 
-Each domain — **customers**, **accounts**, **transactions** — is an identical vertical slice of five small modules. Routing and HTTP stay thin; persistence,
-event emission, and seeding are each isolated behind their own module:
+Each domain — **customers**, **accounts**, **transactions**, **analytics**, **chat**, **data lineage** — is an identical vertical slice of six small modules. Routing and HTTP stay thin; persistence, event emission, and seeding are each isolated behind their own module:
 
 | Layer | Module | Responsibility |
 |-------|--------|----------------|
@@ -177,11 +178,24 @@ The C360 analytics dashboard (KPI tiles and distribution charts) does not pull e
 | `fct_crm_by_gender` | per gender | gender counts |
 | `fct_crm_by_country` | per country | country counts (top-8 + "Other") |
 
-In live mode the backend (`analytics/crm_provider.py`) runs five trivial `SELECT *` **snapshot queries** — one per table — concurrently through the `confluent-sql` DB-API driver, and `analytics/crm_aggregate.py` folds the pre-aggregated rows into the dashboard payload (`DataAnalytics`). Only the summary rows cross the wire; the aggregation stays in Flink. Mock mode still folds the local fixture, so the dashboard renders with no infrastructure.
+In live mode the backend (`analytics/crm_provider.py`) runs five trivial `SELECT *` **snapshot queries** — one per table — concurrently through the `confluent-sql` DB-API driver, 
+
+![](./diagrams/snapshot_q_crm.drawio.png)
+
+and `analytics/crm_aggregate.py` folds the pre-aggregated rows into the dashboard payload (`DataAnalytics`). Only the summary rows cross the wire; the aggregation stays in Flink. 
+
+![](./images/fct_c360_profile_db.png)
+
+* code involved:
+
+  * [api/analytics_resource.py](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/api/analytics_resource.py)
+  * [analytics/service.py](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/analytics/service.py)
+  * [backend/analytics/providers.py](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/analytics/providers.py)
+  * [analytics/crm_aggregate.py](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/analytics/crm_aggregate.py) to build aggregates for dashboard
 
 ### Snapshot Query
 
-The frontend exposes a widget to query customer profile given his/her name. Once clicking on `Search` the backend initiates a Flink Snapshot query to get the data out of the fact c360 profile topic/table:
+The frontend exposes a widget to query customer profile given his/her name. Once clicking on `Search` the front end first goes to load customer record from the database via the customer service and resources and the get the profile by running a Flink Snapshot query to get the data out of the fact c360 profile topic/table:
 
 ![](./images/snap_query_carter.png)
 
@@ -191,20 +205,25 @@ The process flow looks like:
 
 ### Lightning Query Integration
 
-The Frontend exposes a widget to get a customer c360 profile given his/her last name. 
+The Frontend also exposes a widget to get a customer c360 profile given his/her last name
 
 ![](./images/LT_execution_carter.png)
 
-The flow is as follow:
+This time the application logic flow leverages a client that use the REST API of lightning table:
 
 ![](./diagrams/LT_app_flow.drawio.png)
 
+(The customer record is loaded from the database.)
 
 ### Real-Time Context Engine
 
-This time the 'Assistant' user interface is to emulate an agent to call the [Confluent real-time context engine](https://docs.confluent.io/cloud/current/ai/real-time-context-engine/overview.html) to get real-time customer 360 profile data. The classical demonstration is to use an harness like Claude Code.
+This time the 'Assistant' user interface is to emulate an agent to call the [Confluent real-time context engine](https://docs.confluent.io/cloud/current/ai/real-time-context-engine/overview.html) to get real-time customer 360 profile data. 
 
-* The frontend exposes a chat inteface [/pages/ChatPage.tsx](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/frontend/src/pages/ChatPage.tsx) with a sendChatMessage(text, history) javascript method to reach the backend via a HTTP POST to `/chat`
+![](./images/querying_with_chat_rtce.png)
+
+In a developer centric demonstration, we will use an harness like Claude Code, codex, pi.dev... Here we want to simulate a business user who wants to get business data directly from Kafka.
+
+* The frontend exposes a chat interface [/pages/ChatPage.tsx](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/frontend/src/pages/ChatPage.tsx) with a sendChatMessage(text, history) javascript method to reach the backend via a HTTP POST to `/chat`
 * The backend resource [api/chat_resource.py](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/api/chat_resource.py) export an async function, which delegates to the service layer
   ```python
   @router.post("", response_model=ChatResponse, status_code=200)
@@ -213,7 +232,20 @@ This time the 'Assistant' user interface is to emulate an agent to call the [Con
   ```
 
 * The [service](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/chat/service.py) manages the support to `stub` mode to return canned text or `live` mode to run the Agno agent against the local LLM + RTCE context-engine MCP server. 
-* [Agno agent]((https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/chat/agent.py) ) wires a local OpenAI-compatible LLM (an MLX server) to the Confluent Real-Time Context Engine context-engine MCP server. The MCP server URL is derived from the Confluent (`config.settings.rtce_mcp_url()`). Auth is HTTP Basic with the org-wide GLOBAL key/secret. [Agno]() SDK offers a set of construct to simplify the definition of agent with prompt, tools.
+* [Agno agent]((https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/chat/agent.py) ) wires a local OpenAI-compatible LLM (an MLX server) to the Confluent Real-Time Context Engine context-engine MCP server. 
+  ```python
+    model, server_params = _build_model_and_params()
+    async with MCPTools(
+        server_params=server_params,
+        transport="streamable-http",
+        timeout_seconds=_MCP_TIMEOUT_SECONDS,
+    ) as tools:
+        agent = Agent(model=model, tools=[tools], instructions=_INSTRUCTIONS, markdown=False)
+        result = await agent.arun(input=prompt)
+    return (result.content or "").strip()
+  ```
+
+The MCP server URL is derived from the Confluent (`config.settings.rtce_mcp_url()`). Auth is HTTP Basic with the org-wide GLOBAL key/secret. [Agno](https://docs.agno.com/tools/mcp/overview) SDK offers a set of constructs to simplify the definition of agent with prompt, tools, persistence...
 
 It is interresting to see that a MCP ClientSession is stateful and single-session over streamable-HTTP. So the implementation uses a session, initiated from the frontend, and maintained until the user reset it. The session_id is a cache key + agno session id. Frontend generates a UUID on first submit, displays it, sends it every turn. A `Reset` button closes the server-side connection and starts a new UUID. Conversation continuity stays frontend-driven, the history is sent from the UI and injected into the prompt. The cache is purely connection/agent reuse for latency. Session_id also tags the agno run for visibility. The connection is lazily created on first message of a session (preserves graceful degradation), reuse until Reset. The idle-TTL is set to 30 min and a max-sessions cap evict stale ones, app shutdown closes all. Per-session lock serializes a session's turns with support to reconnect-on-failure.
 
@@ -222,6 +254,22 @@ Here is component view of the integration:
 ![](./diagrams/chat_rtce.drawio.png)
 
 ### Get Data Product Lineage and Metrics
+
+The last part of the demonstration is to present a Flink focused lineage, with Data product view.
+
+* The Frontend uses a [DataProductsPage](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/frontend/src/pages/DataProductsPage.tsx) and [StatementGraphPage](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/frontend/src/pages/StatementGraphPage.tsx) 
+
+![](./images/statement_graph.png)
+
+* The backend exposes REST resource in [data_product_resource](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/apps/backend/api/data_product_resource.py) with service and provider, following previous implementation pattern.
+* As of now the list of data products come from listing json file in the descriptors folder, and each graph is a static definition from the dbt pipelines.
+* To build those json manifest there is a tool, the [build_descriptors](https://github.com/jbcodeforce/streamhouse_c360_demo/blob/main/scripts/build_descriptors.py) which offers a CLI to read dbt manifest.json and creates expected files for the backend:
+  ```sh
+  cd pipelines
+  uv run python ../scripts/build_descriptors.py
+  ```
+
+* To get live metrics the backend is calling the Confluent cloud REST API, and depending of the "table_type" being "streaming_table" or "materialized_table" the metrics query is not the same.
 
 ## Tests
 

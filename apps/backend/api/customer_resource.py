@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from customers import service
 from customers.models import Customer, CustomerCreate, CustomerUpdate
@@ -18,7 +18,19 @@ def create_customer(data: CustomerCreate) -> Customer:
 
 
 @router.get("", response_model=list[Customer], status_code=200)
-def list_customers() -> list[Customer]:
+def list_customers(
+    name: str | None = Query(None, description="Case-insensitive name substring filter"),
+) -> list[Customer]:
+    """List customers, or search by name when ``name`` is supplied.
+
+    This is the by-name resolver the C360 dashboard calls first: the operational
+    customer store is the system of record for identity, so a name is resolved
+    here (returning the matching ``customer_id``s) rather than against the
+    derived ``fct_c360_profile`` analytics snapshot. A blank ``name`` yields an
+    empty list; omitting ``name`` lists everyone.
+    """
+    if name is not None:
+        return service.get_by_name(name)
     return service.list_all()
 
 

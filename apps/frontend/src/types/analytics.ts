@@ -38,22 +38,6 @@ export interface DataAnalytics {
   balance_by_segment: CategoryValue[]
 }
 
-export interface CustomerMatch {
-  customer_id: string
-  first_name: string | null
-  last_name: string | null
-  customer_segment: string | null
-  city: string | null
-  state: string | null
-}
-
-export interface CustomerSearchResponse {
-  source_mode: string
-  query: string
-  matches: CustomerMatch[]
-  query_ms: number
-}
-
 export interface CustomerProfile {
   source_mode: string
   query_ms: number

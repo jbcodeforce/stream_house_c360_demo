@@ -435,3 +435,20 @@ class TestGetByName:
     def test_get_by_name_no_match(self, client):
         from customers import service
         assert service.get_by_name("NonExistentCustomerNameXYZ") == []
+
+    def test_list_endpoint_name_filter_searches(self, client):
+        # The dashboard resolves a name here (system of record) before calling
+        # the analytics by-id profile endpoint.
+        r = client.get("/api/v1/customers", params={"name": "Sharma"})
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body) > 0
+        assert all("Sharma" in c["last_name"] or "Sharma" in c["first_name"] for c in body)
+
+    def test_list_endpoint_blank_name_returns_empty(self, client):
+        r = client.get("/api/v1/customers", params={"name": "   "})
+        assert r.status_code == 200 and r.json() == []
+
+    def test_list_endpoint_without_name_lists_all(self, client):
+        r = client.get("/api/v1/customers")
+        assert r.status_code == 200 and len(r.json()) > 0

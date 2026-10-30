@@ -5,6 +5,13 @@ export function listCustomers(): Promise<Customer[]> {
   return request<Customer[]>('/customers')
 }
 
+// Resolve a name to customers via the operational store (system of record for
+// identity). The C360 dashboard calls this first, then fetches the analytics
+// profile by customer_id.
+export function searchCustomersByName(name: string): Promise<Customer[]> {
+  return request<Customer[]>(`/customers?name=${encodeURIComponent(name)}`)
+}
+
 export function getCustomer(id: string): Promise<Customer> {
   return request<Customer>(`/customers/${id}`)
 }

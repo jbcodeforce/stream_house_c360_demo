@@ -1,13 +1,8 @@
 import { useEffect, useState } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { ApiError } from '../api/client'
-import {
-  getC360Analytics,
-  searchCustomers,
-  getCustomerProfile,
-  searchCustomersRtce,
-  getCustomerProfileRtce,
-} from '../api/analytics'
+import { getC360Analytics, getCustomerProfile, getCustomerProfileRtce } from '../api/analytics'
+import { searchCustomersByName } from '../api/customers'
 import { formatCurrency, formatMs, nf } from '../lib/format'
 import CustomerLookup from '../components/CustomerLookup'
 import type { DataAnalytics, CategoryCount, CategoryValue } from '../types/analytics'
@@ -108,12 +103,12 @@ export default function AnalyticsPage() {
         badge="Flink Statements API"
         subtitle={
           <>
-            Search by name, then the profile is fetched with a{' '}
-            <code>WHERE customer_id = …</code> snapshot query (reads the upsert changelog and
-            collapses it to current state).
+            Resolve the name against the operational customer service (system of record), then
+            fetch the profile with a <code>WHERE customer_id = …</code> snapshot query (reads the
+            upsert changelog and collapses it to current state).
           </>
         }
-        search={searchCustomers}
+        search={searchCustomersByName}
         getProfile={getCustomerProfile}
       />
 
@@ -192,12 +187,12 @@ export default function AnalyticsPage() {
         badge="Lightning Query API"
         subtitle={
           <>
-            Same search, served by the Real-Time Context Engine over the{' '}
-            <code>fct_c360_profile</code> lightning table — a millisecond point lookup that returns
-            current state directly (no changelog to collapse).
+            Same name resolution via the customer service, but the profile is served by the
+            Real-Time Context Engine over the <code>fct_c360_profile</code> lightning table — a
+            millisecond point lookup that returns current state directly (no changelog to collapse).
           </>
         }
-        search={searchCustomersRtce}
+        search={searchCustomersByName}
         getProfile={getCustomerProfileRtce}
       />
     </div>

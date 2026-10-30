@@ -5,6 +5,7 @@ import {
   deleteCustomer,
   getCustomer,
   listCustomers,
+  searchCustomersByName,
   updateCustomer,
 } from './customers'
 
@@ -15,6 +16,12 @@ describe('customers api', () => {
     const spy = vi.spyOn(client, 'request').mockResolvedValue([])
     await listCustomers()
     expect(spy).toHaveBeenCalledWith('/customers')
+  })
+
+  it('searchCustomersByName GETs /customers with an encoded name filter', async () => {
+    const spy = vi.spyOn(client, 'request').mockResolvedValue([])
+    await searchCustomersByName('José Díaz')
+    expect(spy).toHaveBeenCalledWith('/customers?name=Jos%C3%A9%20D%C3%ADaz')
   })
 
   it('getCustomer GETs /customers/:id', async () => {

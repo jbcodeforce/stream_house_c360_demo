@@ -69,27 +69,6 @@ class DataAnalytics(BaseModel):
     balance_by_segment: list[CategoryValue]
 
 
-class CustomerMatch(BaseModel):
-    """A by-name search hit: enough to show in a picker and fetch the profile."""
-
-    customer_id: str
-    first_name: str | None = None
-    last_name: str | None = None
-    customer_segment: str | None = None
-    city: str | None = None
-    state: str | None = None
-
-
-class CustomerSearchResponse(BaseModel):
-    """Result of a by-name customer search (one dynamic snapshot query)."""
-
-    source_mode: str
-    query: str
-    matches: list[CustomerMatch]
-    # Wall-clock time the search query took (backend-measured), ms.
-    query_ms: float = 0.0
-
-
 class CustomerProfile(BaseModel):
     """Per-customer metrics from a ``WHERE customer_id = …`` snapshot query."""
 

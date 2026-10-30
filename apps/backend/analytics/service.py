@@ -1,8 +1,9 @@
 """Orchestration for the C360 analytics dashboard.
 
 Thin layer between the API router and the ``providers``/``aggregate`` modules:
-the aggregate dashboard folds a full snapshot; the customer lookup resolves a
-by-name search then fetches one profile via a ``WHERE customer_id = …`` query.
+the aggregate dashboard folds a full snapshot; the customer lookup fetches one
+profile via a ``WHERE customer_id = …`` query. Name-to-id resolution lives in
+the operational customer service (the system of record for identity), not here.
 """
 
 from __future__ import annotations
@@ -13,12 +14,7 @@ from typing import TypeVar
 
 from analytics import crm_aggregate, crm_provider, mock_data, providers
 from analytics.aggregate import mock_aggregate
-from analytics.models import (
-    DataAnalytics,
-    CustomerMatch,
-    CustomerProfile,
-    CustomerSearchResponse,
-)
+from analytics.models import DataAnalytics, CustomerProfile
 
 _T = TypeVar("_T")
 
@@ -66,36 +62,6 @@ def get_data_analytics() -> DataAnalytics:
         return mock_aggregate(rows, source_mode="mock", query_ms=query_ms)
     result_sets, query_ms = _timed(crm_provider.fetch_crm_result_sets)
     return crm_aggregate.assemble(*result_sets, source_mode="live", query_ms=query_ms)
-
-
-def _to_search_response(
-    rows: list[dict], source_mode: str, query: str, query_ms: float
-) -> CustomerSearchResponse:
-    matches = [
-        CustomerMatch(
-            customer_id=str(r.get("customer_id")),
-            first_name=r.get("first_name"),
-            last_name=r.get("last_name"),
-            customer_segment=r.get("customer_segment"),
-            city=r.get("city"),
-            state=r.get("state"),
-        )
-        for r in rows
-        if r.get("customer_id")
-    ]
-    return CustomerSearchResponse(
-        source_mode=source_mode, query=query.strip(), matches=matches, query_ms=query_ms
-    )
-
-
-def search_customers(name: str) -> CustomerSearchResponse:
-    (rows, source_mode), query_ms = _timed(lambda: providers.search_customers(name))
-    return _to_search_response(rows, source_mode, name, query_ms)
-
-
-def search_customers_rtce(name: str) -> CustomerSearchResponse:
-    (rows, source_mode), query_ms = _timed(lambda: providers.search_customers_rtce(name))
-    return _to_search_response(rows, source_mode, name, query_ms)
 
 
 def get_customer_profile(customer_id: str) -> CustomerProfile | None:

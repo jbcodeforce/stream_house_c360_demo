@@ -2,14 +2,16 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Search } from 'lucide-react'
 import { ApiError } from '../api/client'
 import { formatCurrency, formatMs, nf } from '../lib/format'
-import type { CustomerMatch, CustomerProfile, CustomerSearchResponse } from '../types/analytics'
+import type { CustomerProfile } from '../types/analytics'
+import type { Customer } from '../types/customer'
 
 interface CustomerLookupProps {
   title: string
   subtitle: ReactNode
   /** Short engine label shown as a pill (e.g. "Flink snapshot", "RTCE"). */
   badge?: string
-  search: (name: string) => Promise<CustomerSearchResponse>
+  /** Resolve a name to customers via the operational customer service. */
+  search: (name: string) => Promise<Customer[]>
   getProfile: (customerId: string) => Promise<CustomerProfile>
 }
 
@@ -62,8 +64,7 @@ function ProfileCard({ profile }: { profile: CustomerProfile }) {
 
 export default function CustomerLookup({ title, subtitle, badge, search, getProfile }: CustomerLookupProps) {
   const [query, setQuery] = useState('')
-  const [matches, setMatches] = useState<CustomerMatch[] | null>(null)
-  const [searchMs, setSearchMs] = useState<number | null>(null)
+  const [matches, setMatches] = useState<Customer[] | null>(null)
   const [searching, setSearching] = useState(false)
   const [searchError, setSearchError] = useState<string | null>(null)
 
@@ -94,23 +95,20 @@ export default function CustomerLookup({ title, subtitle, badge, search, getProf
     setSelectedId(null)
     if (!name) {
       setMatches(null)
-      setSearchMs(null)
       setSearchError(null)
       return
     }
     setSearching(true)
     setSearchError(null)
     try {
-      const res = await search(name)
-      setMatches(res.matches)
-      setSearchMs(res.query_ms)
+      const found = await search(name)
+      setMatches(found)
       // One unambiguous hit → go straight to the WHERE customer_id = … query.
-      if (res.matches.length === 1) {
-        await selectCustomer(res.matches[0].customer_id)
+      if (found.length === 1) {
+        await selectCustomer(found[0].customer_id)
       }
     } catch (err) {
       setMatches(null)
-      setSearchMs(null)
       setSearchError(err instanceof ApiError ? err.message : 'Search failed')
     } finally {
       setSearching(false)
@@ -143,12 +141,6 @@ export default function CustomerLookup({ title, subtitle, badge, search, getProf
       {searchError && <div className="status-msg status-msg--error">{searchError}</div>}
       {searching && <div className="status-msg">Searching…</div>}
 
-      {!searching && searchMs !== null && matches !== null && (
-        <div className="query-timer" title="Backend-measured search query time">
-          ⏱ Search {formatMs(searchMs)} · {matches.length} match{matches.length === 1 ? '' : 'es'}
-        </div>
-      )}
-
       {!searching && matches !== null && matches.length === 0 && (
         <div className="status-msg">No customers match “{query.trim()}”.</div>
       )}
@@ -164,7 +156,7 @@ export default function CustomerLookup({ title, subtitle, badge, search, getProf
               >
                 <span className="match-item__name">{fullName(m)}</span>
                 <span className="match-item__meta">
-                  {[m.customer_segment, [m.city, m.state].filter(Boolean).join(', ')]
+                  {[m.segment, [m.city, m.state].filter(Boolean).join(', ')]
                     .filter(Boolean)
                     .join(' · ')}
                 </span>

@@ -156,6 +156,15 @@ class LiveProvider:
             logger.warning("LiveProvider: get_statement_metrics failed for %s", statement_name, exc_info=True)
             return {}
 
+    def _safe_statements(self) -> dict[str, dict]:
+        """``{name: {"phase", "uid", "sql"}}`` — the statement objects, source of
+        the defining SQL for streaming-table nodes (spec.statement)."""
+        try:
+            return self._client.list_statements()
+        except Exception:  # noqa: BLE001 — best-effort: never let this surface
+            logger.warning("LiveProvider: list_statements failed", exc_info=True)
+            return {}
+
     def get_status(self, graph: Graph) -> StatusResponse:
         phases = self._merged_phases(self._safe_statement_phases(), self._safe_materialized_tables())
         statements = []
@@ -203,6 +212,12 @@ class LiveProvider:
         if node.table_type == "streaming_table":
             if node.statement_name:
                 raw.update(self._safe_statement_metrics(node.statement_name))
+                # A streaming table is a regular statement; its defining SQL lives
+                # on the statement object (spec.statement), matched by name —
+                # parallel to the MT branch reading spec.query below.
+                entry = self._safe_statements().get(node.statement_name)
+                if entry and entry.get("sql"):
+                    raw["sql"] = entry["sql"]
         else:
             entry = self._mt_entry_for(node, mt_tables)
             if entry:

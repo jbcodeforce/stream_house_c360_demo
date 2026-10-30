@@ -21,20 +21,13 @@ logger = logging.getLogger(__name__)
 # The materialized table the snapshot query reads.
 PROFILE_TABLE = "fct_c360_profile"
 
-# Columns for the two parameterized lookups.
-_SEARCH_COLUMNS = ("customer_id", "first_name", "last_name", "customer_segment", "city", "state")
+# Columns for the by-id profile lookup.
 _PROFILE_COLUMNS = (
     "customer_id", "first_name", "last_name", "customer_segment", "generation_segment",
     "gender", "age_years", "city", "state", "country", "customer_since",
     "days_since_registration", "missing_email_flag", "missing_phone_flag",
     "account_count", "total_balance", "txn_count", "txn_total",
 )
-# Cap on by-name matches returned (the picker list) after changelog collapse.
-_SEARCH_LIMIT = 50
-# Server-side LIMIT guard on the raw name-filtered changelog. Must be generous
-# enough that every matched customer's full changelog fits (so the collapse
-# keeps their current row), while still bounding the read.
-_SEARCH_SQL_LIMIT = 5_000
 # customer_id is an opaque id (UUID-ish); only these characters are ever valid,
 # so anything else is rejected before it reaches a SQL literal.
 _CUSTOMER_ID_RE = re.compile(r"^[A-Za-z0-9._:\-]{1,128}$")
@@ -77,40 +70,12 @@ def _mode() -> str:
     return mode
 
 
-def _search_sql(name_lower: str) -> str:
-    cols = ", ".join(_SEARCH_COLUMNS)
-    pattern = _sql_str(f"%{name_lower}%")
-    return (
-        f"SELECT {cols} FROM {PROFILE_TABLE} "
-        f"WHERE LOWER(first_name || ' ' || last_name) LIKE {pattern} "
-        f"LIMIT {_SEARCH_SQL_LIMIT}"
-    )
-
-
 def _profile_sql(customer_id: str) -> str:
     # No LIMIT: fct_c360_profile is an upsert changelog, so the whole changelog
     # for this one key must be read and collapsed to its latest row. A LIMIT
     # would truncate to the first (stale) version.
     cols = ", ".join(_PROFILE_COLUMNS)
     return f"SELECT {cols} FROM {PROFILE_TABLE} WHERE customer_id = {_sql_str(customer_id)}"
-
-
-def search_customers(name: str) -> tuple[list[dict], str]:
-    """Resolve a by-name search to candidate rows; ``([], mode)`` when blank.
-
-    Dynamic snapshot query (``WHERE … LIKE``) in live mode; a substring filter
-    over the fixture in mock mode. Case-insensitive on ``first last``.
-    """
-    mode = _mode()
-    needle = name.strip().lower()
-    if not needle:
-        return [], mode
-    if mode == "mock":
-        return _mock_search(needle), mode
-    rows = FlinkSnapshotClient().run(
-        _search_sql(needle), max_rows=_SEARCH_LIMIT, changelog_key="customer_id"
-    )
-    return rows, mode
 
 
 def get_customer_profile(customer_id: str) -> tuple[dict | None, str]:
@@ -128,23 +93,11 @@ def get_customer_profile(customer_id: str) -> tuple[dict | None, str]:
     return (rows[0] if rows else None), mode
 
 
-# --- RTCE / Lightning Query API variants ---------------------------------
+# --- RTCE / Lightning Query API variant ----------------------------------
 #
-# Same name search + by-id profile, but served by the Lightning point-lookup API
-# (current state directly — no changelog collapse). Mock mode reuses the same
-# fixture, so both lookup sections behave identically with no infra.
-
-
-def search_customers_rtce(name: str) -> tuple[list[dict], str]:
-    """By-name search via the Lightning Query API (``WHERE … LIKE``)."""
-    mode = _mode()
-    needle = name.strip().lower()
-    if not needle:
-        return [], mode
-    if mode == "mock":
-        return _mock_search(needle), mode
-    rows = LightningClient().query(_search_sql(needle), _SEARCH_COLUMNS, max_rows=_SEARCH_LIMIT)
-    return rows, mode
+# Same by-id profile, but served by the Lightning point-lookup API (current
+# state directly — no changelog collapse). Mock mode reuses the same fixture,
+# so both lookup sections behave identically with no infra.
 
 
 def get_customer_profile_rtce(customer_id: str) -> tuple[dict | None, str]:
@@ -157,14 +110,6 @@ def get_customer_profile_rtce(customer_id: str) -> tuple[dict | None, str]:
         return _mock_profile(cid), mode
     rows = LightningClient().query(_profile_sql(cid), _PROFILE_COLUMNS, max_rows=1)
     return (rows[0] if rows else None), mode
-
-
-def _mock_search(needle: str) -> list[dict]:
-    return [
-        r
-        for r in mock_data.PROFILE_SNAPSHOT
-        if needle in f"{r.get('first_name', '')} {r.get('last_name', '')}".lower()
-    ][:_SEARCH_LIMIT]
 
 
 def _mock_profile(cid: str) -> dict | None:

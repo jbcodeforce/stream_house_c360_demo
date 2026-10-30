@@ -25,14 +25,19 @@ class _FakeClient:
         metrics: dict | None = None,
         mt_tables: dict[str, dict] | None = None,
         mt_metrics: dict | None = None,
+        statements: dict[str, dict] | None = None,
     ) -> None:
         self._phases = phases or {}
         self._metrics = metrics or {}
         self._mt_tables = mt_tables or {}
         self._mt_metrics = mt_metrics or {}
+        self._statements = statements or {}
 
     def list_statement_phases(self) -> dict[str, str]:
         return dict(self._phases)
+
+    def list_statements(self) -> dict[str, dict]:
+        return {name: dict(info) for name, info in self._statements.items()}
 
     def list_materialized_tables(self) -> dict[str, dict]:
         return {name: dict(info) for name, info in self._mt_tables.items()}
@@ -53,6 +58,9 @@ class _RaisingClient:
     def list_statement_phases(self) -> dict[str, str]:
         raise self._exc
 
+    def list_statements(self) -> dict[str, dict]:
+        raise self._exc
+
     def list_materialized_tables(self) -> dict[str, dict]:
         raise self._exc
 
@@ -68,8 +76,12 @@ def _fake_client(
     metrics: dict | None = None,
     mt_tables: dict[str, dict] | None = None,
     mt_metrics: dict | None = None,
+    statements: dict[str, dict] | None = None,
 ) -> _FakeClient:
-    return _FakeClient(phases=phases, metrics=metrics, mt_tables=mt_tables, mt_metrics=mt_metrics)
+    return _FakeClient(
+        phases=phases, metrics=metrics, mt_tables=mt_tables,
+        mt_metrics=mt_metrics, statements=statements,
+    )
 
 
 def _raising_client(exc: Exception) -> _RaisingClient:
@@ -186,6 +198,19 @@ def test_live_streaming_node_metrics_use_statement_name_not_mt():
     assert m.compute_pool_cfu == 2.0  # statement path, not the MT's 99.0
 
 
+def test_live_streaming_node_sql_comes_from_statement_object():
+    # A streaming table is a regular Flink statement, so its defining SQL comes
+    # from the statement object (spec.statement), matched by statement_name —
+    # mirroring how the MT branch pulls SQL from the materialized-table spec.
+    client = _fake_client(
+        metrics={"pending_records": 7},
+        statements={"stmt-stream": {"phase": "RUNNING", "uid": "s-1",
+                                    "sql": "INSERT INTO stream_node SELECT * FROM src"}},
+    )
+    m = providers.LiveProvider(client=client).get_metrics(_mixed_graph(), "stream_node")
+    assert m.sql == "INSERT INTO stream_node SELECT * FROM src"
+
+
 # --- real-ConfluentClient HTTP-layer tests (httpx mocked, no network) ---
 #
 # The tests above inject a fake at the client boundary, so they never
@@ -219,7 +244,11 @@ def _settings(**overrides) -> types.SimpleNamespace:
     return types.SimpleNamespace(**base)
 
 
-def test_metrics_query_body_matches_metrics_api_schema(monkeypatch):
+def test_statement_metrics_query_groups_by_statement_not_eq_filter(monkeypatch):
+    # resource.flink_statement.name is NOT an authorized-resource filter — an EQ
+    # filter on it returns empty. The statement per-node metrics must instead
+    # filter by the authorized compute pool and GROUP BY the statement name, then
+    # pick the target statement out of the grouped result.
     calls: list[dict] = []
 
     def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002 - match httpx signature
@@ -229,10 +258,10 @@ def test_metrics_query_body_matches_metrics_api_schema(monkeypatch):
     monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
     client = confluent_client.ConfluentClient(settings_obj=_settings())
 
-    client.get_statement_metrics("models-c360-sources-pipeline-src-customers")
+    client.get_statement_metrics("dbt-streamhouse-fct-crm-by-country-5ab51e")
 
-    # Four scoped queries: statement pending_records, pool CFUs, and the two
-    # record-count counters (in/out) that back messages_in/out_per_sec.
+    # Four scoped queries: pending_records, pool CFUs, and the two record-count
+    # counters (in/out) that back messages_in/out_per_sec.
     assert len(calls) == 4
     for call in calls:
         # Regression guard: telemetry host, not api.confluent.cloud; HTTP Basic (not bearer).
@@ -249,43 +278,84 @@ def test_metrics_query_body_matches_metrics_api_schema(monkeypatch):
     assert "io.confluent.flink/num_records_in" in bodies_by_metric
     assert "io.confluent.flink/num_records_out" in bodies_by_metric
 
-    # pending_records must be scoped to the statement via the correct filter field.
-    pending_body = bodies_by_metric["io.confluent.flink/pending_records"]
-    filter_fields = {f["field"]: f["value"] for f in pending_body["filter"]["filters"]}
-    assert filter_fields["resource.flink_statement.name"] == "models-c360-sources-pipeline-src-customers"
-    assert filter_fields["resource.compute_pool.id"] == "lfcp-x"
+    # The per-statement metrics (pending + the two counters) must GROUP BY the
+    # statement name and filter ONLY by the authorized compute pool — never an
+    # EQ filter on resource.flink_statement.name (that returns empty).
+    for metric in (
+        "io.confluent.flink/pending_records",
+        "io.confluent.flink/num_records_in",
+        "io.confluent.flink/num_records_out",
+    ):
+        body = bodies_by_metric[metric]
+        assert body["format"] == "GROUPED"
+        assert "resource.flink_statement.name" in body["group_by"]
+        assert "resource.compute_pool.id" in body["group_by"]
+        # The filter scopes to the authorized pool and must NOT constrain the
+        # statement name (the whole point of the fix).
+        filter_blob = repr(body["filter"])
+        assert "resource.compute_pool.id" in filter_blob
+        assert "lfcp-x" in filter_blob
+        assert "resource.flink_statement.name" not in filter_blob
 
-    # Record counters are scoped the same way (authorized pool + statement name).
-    in_fields = {f["field"]: f["value"] for f in bodies_by_metric["io.confluent.flink/num_records_in"]["filter"]["filters"]}
-    assert in_fields["resource.flink_statement.name"] == "models-c360-sources-pipeline-src-customers"
-    assert in_fields["resource.compute_pool.id"] == "lfcp-x"
 
+def test_statement_metrics_picks_target_statement_from_grouped_data(monkeypatch):
+    # The grouped response carries every statement in the pool; the method must
+    # return only the requested statement's values and ignore the rest.
+    target = "dbt-streamhouse-fct-crm-by-country-5ab51e"
+    other = "dbt-streamhouse-fct-crm-by-gender-72cff3"
 
-def test_metrics_parses_latest_data_point_value(monkeypatch):
     def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002
         metric = json["aggregations"][0]["metric"]
         if metric == "io.confluent.flink/pending_records":
             return _Resp({"data": [
-                {"timestamp": "2026-10-24T10:00:00Z", "value": 10},
-                {"timestamp": "2026-10-24T10:05:00Z", "value": 4200},  # latest
+                {"resource.flink_statement.name": other, "points": [
+                    {"timestamp": "2026-10-24T10:05:00Z", "value": 999}]},
+                {"resource.flink_statement.name": target, "points": [
+                    {"timestamp": "2026-10-24T10:00:00Z", "value": 10},
+                    {"timestamp": "2026-10-24T10:05:00Z", "value": 4200}]},  # latest
             ]})
         if metric == "io.confluent.flink/num_records_in":
-            return _Resp({"data": [{"timestamp": "2026-10-24T10:05:00Z", "value": 120}]})
+            return _Resp({"data": [
+                {"resource.flink_statement.name": target, "points": [
+                    {"timestamp": "2026-10-24T10:05:00Z", "value": 120}]},
+            ]})
         if metric == "io.confluent.flink/num_records_out":
-            return _Resp({"data": [{"timestamp": "2026-10-24T10:05:00Z", "value": 60}]})
+            return _Resp({"data": [
+                {"resource.flink_statement.name": target, "points": [
+                    {"timestamp": "2026-10-24T10:05:00Z", "value": 60}]},
+            ]})
+        # pool CFU — pool-scoped, flat points.
         return _Resp({"data": [{"timestamp": "2026-10-24T10:05:00Z", "value": 2.0}]})
 
     monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
     client = confluent_client.ConfluentClient(settings_obj=_settings())
 
-    metrics = client.get_statement_metrics("models-c360-sources-pipeline-src-transactions")
+    metrics = client.get_statement_metrics(target)
 
-    # Reads `value` from the most recent point (not a key named after the metric).
+    # Latest point for the TARGET statement only (not the other statement's 999).
     assert metrics["pending_records"] == 4200
     assert metrics["compute_pool_cfu"] == 2.0
     # COUNTER value is records per PT1M interval -> per-second rate divides by 60.
     assert metrics["messages_in_per_sec"] == 120 / 60
     assert metrics["messages_out_per_sec"] == 60 / 60
+
+
+def test_statement_metrics_absent_statement_yields_no_rate(monkeypatch):
+    # If the requested statement isn't present in the grouped data, its metrics
+    # are simply absent (None downstream) — never another statement's values.
+    def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002
+        return _Resp({"data": [
+            {"resource.flink_statement.name": "someone-else", "points": [
+                {"timestamp": "2026-10-24T10:05:00Z", "value": 500}]},
+        ]})
+
+    monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    metrics = client.get_statement_metrics("dbt-streamhouse-fct-crm-by-country-5ab51e")
+
+    assert "pending_records" not in metrics
+    assert "messages_in_per_sec" not in metrics
 
 
 def test_list_materialized_tables_parses_name_phase_uid(monkeypatch):
@@ -400,6 +470,38 @@ def test_metrics_forbidden_is_swallowed(monkeypatch):
     metrics = client.get_statement_metrics("models-c360-sources-pipeline-src-customers")
 
     assert metrics == {}
+
+
+def test_list_statements_parses_name_phase_sql_uid(monkeypatch):
+    captured: dict = {}
+
+    def fake_get(url, auth=None, timeout=None):
+        captured["url"] = url
+        captured["auth"] = auth
+        return _Resp({"data": [
+            {"name": "stmt-a", "metadata": {"uid": "s-1"},
+             "status": {"phase": "RUNNING"},
+             "spec": {"statement": "INSERT INTO a SELECT * FROM b"}},
+            {"name": "stmt-b", "metadata": {"uid": "s-2"},
+             "status": {"phase": "FAILED"}},  # no spec.statement
+        ]})
+
+    monkeypatch.setattr(confluent_client.httpx, "get", fake_get)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    statements = client.list_statements()
+
+    assert captured["url"] == (
+        "https://flink.us-east-2.aws.confluent.cloud/sql/v1/organizations/"
+        "org-1/environments/env-1/statements"
+    )
+    assert captured["auth"] == ("fk", "fs")
+    # The statement's defining SQL (spec.statement) rides along for the drill-down
+    # panel; it's None when the spec omits it.
+    assert statements == {
+        "stmt-a": {"phase": "RUNNING", "uid": "s-1", "sql": "INSERT INTO a SELECT * FROM b"},
+        "stmt-b": {"phase": "FAILED", "uid": "s-2", "sql": None},
+    }
 
 
 def test_statement_phases_uses_flink_endpoint_with_basic_auth(monkeypatch):
