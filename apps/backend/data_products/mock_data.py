@@ -81,3 +81,7 @@ LAGGING_PENDING_RECORDS = 15_000
 # CFU-hour (~$0.09) over a 30-day month; the exact value only needs to be
 # plausible, not billed.
 MOCK_CFU_DOLLARS_PER_MONTH = 64.80
+# Fallback per-statement CFU for a product whose nodes aren't in
+# STATEMENT_FIXTURES (e.g. crm), so its mock cost is still a plausible non-zero
+# figure and the demo never shows "$0 this month".
+MOCK_DEFAULT_NODE_CFU = 2.0

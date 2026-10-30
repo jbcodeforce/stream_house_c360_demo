@@ -781,3 +781,12 @@ def test_statement_metrics_defaults_to_settings_pool(monkeypatch):
 
     for body in calls:
         assert _pool_filter_values(body) == ["lfcp-x"]
+
+
+def test_live_get_cost_zero_amount_is_unavailable():
+    # A matched pool whose cost sums to (effectively) zero must NOT show a $0
+    # banner: available is False once the rounded amount is 0.
+    client = _fake_client(pool_costs={"lfcp-crm": 0.0})
+    cost = providers.LiveProvider(client=client).get_cost(_crm_like_graph())
+    assert cost.available is False
+    assert cost.amount == 0.0

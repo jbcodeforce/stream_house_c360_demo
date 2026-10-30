@@ -135,13 +135,16 @@ class MockProvider:
         synthetic per-CFU monthly rate."""
         cfu = sum(
             mock_data.STATEMENT_FIXTURES[node.id][3]
+            if node.id in mock_data.STATEMENT_FIXTURES
+            else mock_data.MOCK_DEFAULT_NODE_CFU
             for node in graph.nodes
-            if node.type == "statement" and not node.external and node.id in mock_data.STATEMENT_FIXTURES
+            if node.type == "statement" and not node.external
         )
+        amount = round(cfu * mock_data.MOCK_CFU_DOLLARS_PER_MONTH, 2)
         start, end = _month_to_date()
         return CostResponse(
-            available=True,
-            amount=round(cfu * mock_data.MOCK_CFU_DOLLARS_PER_MONTH, 2),
+            available=amount > 0,
+            amount=amount,
             cfu=cfu or None,
             period_start=start,
             period_end=end,
@@ -344,8 +347,11 @@ class LiveProvider:
             return CostResponse(available=False, period_start=start, period_end=end)
 
         costs = self._safe_pool_costs(start, end)
-        amount = sum(costs[p] for p in pool_ids if p in costs)
-        available = any(p in costs for p in pool_ids)
+        # Round before the availability check so floating-point noise on an
+        # effectively-zero pool can't flip available to True and surface a "$0"
+        # banner — available means "there is a positive cost to show".
+        amount = round(sum(costs[p] for p in pool_ids if p in costs), 2)
+        available = amount > 0
 
         cfu_values = [c for c in (self._safe_pool_cfu(p) for p in pool_ids) if c is not None]
         cfu = sum(cfu_values) if cfu_values else None

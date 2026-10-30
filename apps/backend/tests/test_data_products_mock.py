@@ -84,3 +84,15 @@ def test_mock_get_cost_matches_fixture_cfu():
     assert cost.cfu == expected_cfu
     assert cost.amount == round(expected_cfu * mock_data.MOCK_CFU_DOLLARS_PER_MONTH, 2)
     assert cost.pool_ids == ["lfcp-c360"]  # owned pools from the graph's statement nodes
+
+
+def test_mock_get_cost_nonzero_for_product_without_fixtures():
+    # crm's owned statement nodes are NOT in STATEMENT_FIXTURES; mock cost must
+    # still be a plausible non-zero figure (never $0) so the demo shows two
+    # products with genuinely different costs. Guards the spec anti-goal.
+    graph = descriptor.get_graph("crm")
+    cost = providers.MockProvider(lagging=False).get_cost(graph)
+    assert cost.available is True
+    assert cost.amount > 0
+    assert cost.cfu is not None and cost.cfu > 0
+    assert cost.pool_ids == ["lfcp-crm"]
