@@ -214,16 +214,16 @@ class LiveProvider:
                 return info
         return None
 
-    def _safe_mt_metrics(self, uid: str) -> dict:
+    def _safe_mt_metrics(self, uid: str, compute_pool_id: str | None = None) -> dict:
         try:
-            return self._client.get_materialized_table_metrics(uid)
+            return self._client.get_materialized_table_metrics(uid, compute_pool_id)
         except Exception:  # noqa: BLE001 — best-effort: never let this surface
             logger.warning("LiveProvider: get_materialized_table_metrics failed for uid=%s", uid, exc_info=True)
             return {}
 
-    def _safe_statement_metrics(self, statement_name: str) -> dict:
+    def _safe_statement_metrics(self, statement_name: str, compute_pool_id: str | None = None) -> dict:
         try:
-            return self._client.get_statement_metrics(statement_name)
+            return self._client.get_statement_metrics(statement_name, compute_pool_id)
         except Exception:  # noqa: BLE001 — best-effort: never let this surface
             logger.warning("LiveProvider: get_statement_metrics failed for %s", statement_name, exc_info=True)
             return {}
@@ -283,7 +283,7 @@ class LiveProvider:
         raw: dict = {}
         if node.table_type == "streaming_table":
             if node.statement_name:
-                raw.update(self._safe_statement_metrics(node.statement_name))
+                raw.update(self._safe_statement_metrics(node.statement_name, node.compute_pool_id))
                 # A streaming table is a regular statement; its defining SQL lives
                 # on the statement object (spec.statement), matched by name —
                 # parallel to the MT branch reading spec.query below.
@@ -298,7 +298,7 @@ class LiveProvider:
             entry = self._mt_entry_for(node, mt_tables)
             if entry:
                 if entry.get("uid"):
-                    raw.update(self._safe_mt_metrics(entry["uid"]))
+                    raw.update(self._safe_mt_metrics(entry["uid"], node.compute_pool_id))
                 if entry.get("sql"):
                     raw["sql"] = entry["sql"]
                 uptime = _uptime_seconds(entry.get("created_at"))

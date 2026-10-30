@@ -127,9 +127,9 @@ class ConfluentClientProtocol(Protocol):
 
     def list_materialized_tables(self) -> dict[str, dict]: ...
 
-    def get_statement_metrics(self, statement_name: str) -> dict: ...
+    def get_statement_metrics(self, statement_name: str, compute_pool_id: str | None = None) -> dict: ...
 
-    def get_materialized_table_metrics(self, mt_uid: str) -> dict: ...
+    def get_materialized_table_metrics(self, mt_uid: str, compute_pool_id: str | None = None) -> dict: ...
 
     def get_flink_pool_costs(self, start_date: date, end_date: date) -> dict[str, float]: ...
 
@@ -383,6 +383,7 @@ class ConfluentClient:
         metric: str,
         api_key: str,
         api_secret: str,
+        compute_pool_id: str,
     ) -> dict[str, float]:
         """Return ``{statement_name: latest_value}`` for one metric across the
         compute pool.
@@ -401,7 +402,7 @@ class ConfluentClient:
             "filter": {
                 "field": "resource.compute_pool.id",
                 "op": "EQ",
-                "value": self._settings.FLINK_COMPUTE_POOL_ID,
+                "value": compute_pool_id,
             },
             "granularity": "PT1M",
             "format": "GROUPED",
@@ -428,7 +429,7 @@ class ConfluentClient:
                 values[name] = value
         return values
 
-    def get_statement_metrics(self, statement_name: str) -> dict:
+    def get_statement_metrics(self, statement_name: str, compute_pool_id: str | None = None) -> dict:
         """Return raw metric fields for one statement; any key may be absent.
 
         Recognized keys: ``pending_records`` (the lag / "messages behind"
@@ -443,7 +444,10 @@ class ConfluentClient:
         Returns ``{}`` if live credentials are not configured. Never raises.
         """
         s = self._settings
-        if not (s.CONFLUENT_CLOUD_API_KEY and s.CONFLUENT_CLOUD_API_SECRET and s.FLINK_COMPUTE_POOL_ID):
+        # The node's own compute pool (threaded from the descriptor), falling
+        # back to the connection-default pool for legacy/unset nodes.
+        pool_id = compute_pool_id or s.FLINK_COMPUTE_POOL_ID
+        if not (s.CONFLUENT_CLOUD_API_KEY and s.CONFLUENT_CLOUD_API_SECRET and pool_id):
             logger.info("ConfluentClient: Metrics API settings incomplete; skipping metrics lookup")
             return {}
 
@@ -455,6 +459,7 @@ class ConfluentClient:
                 "io.confluent.flink/pending_records",
                 s.CONFLUENT_CLOUD_API_KEY,
                 s.CONFLUENT_CLOUD_API_SECRET,
+                pool_id,
             )
             if statement_name in pending_by_stmt:
                 metrics["pending_records"] = int(pending_by_stmt[statement_name])
@@ -465,14 +470,14 @@ class ConfluentClient:
         try:
             cfu = self._query_latest_value(
                 "io.confluent.flink/compute_pool_utilization/current_cfus",
-                [("resource.compute_pool.id", s.FLINK_COMPUTE_POOL_ID)],
+                [("resource.compute_pool.id", pool_id)],
                 s.CONFLUENT_CLOUD_API_KEY,
                 s.CONFLUENT_CLOUD_API_SECRET,
             )
             if cfu is not None:
                 metrics["compute_pool_cfu"] = cfu
         except (httpx.HTTPError, ValueError) as exc:
-            _log_metrics_error(exc, f"pool={s.FLINK_COMPUTE_POOL_ID}")
+            _log_metrics_error(exc, f"pool={pool_id}")
 
         # Throughput: records-in/out per second, grouped by statement, pick this
         # one. The counter's latest point is records-per-PT1M-interval, so divide
@@ -483,7 +488,7 @@ class ConfluentClient:
         ):
             try:
                 by_stmt = self._query_statement_metric_grouped(
-                    metric, s.CONFLUENT_CLOUD_API_KEY, s.CONFLUENT_CLOUD_API_SECRET
+                    metric, s.CONFLUENT_CLOUD_API_KEY, s.CONFLUENT_CLOUD_API_SECRET, pool_id
                 )
                 if statement_name in by_stmt:
                     metrics[field] = by_stmt[statement_name] / _GRANULARITY_SECONDS
@@ -492,7 +497,7 @@ class ConfluentClient:
 
         return metrics
 
-    def get_materialized_table_metrics(self, mt_uid: str) -> dict:
+    def get_materialized_table_metrics(self, mt_uid: str, compute_pool_id: str | None = None) -> dict:
         """Return raw metric fields for one materialized table; keys may be absent.
 
         Materialized tables report their own per-table CFU utilization. The
@@ -510,14 +515,15 @@ class ConfluentClient:
         configured, or if ``mt_uid`` is empty. Never raises.
         """
         s = self._settings
-        if not (s.CONFLUENT_CLOUD_API_KEY and s.CONFLUENT_CLOUD_API_SECRET and s.FLINK_COMPUTE_POOL_ID):
+        pool_id = compute_pool_id or s.FLINK_COMPUTE_POOL_ID
+        if not (s.CONFLUENT_CLOUD_API_KEY and s.CONFLUENT_CLOUD_API_SECRET and pool_id):
             logger.info("ConfluentClient: Metrics API settings incomplete; skipping MT metrics lookup")
             return {}
         if not mt_uid:
             return {}
 
         scope = [
-            ("resource.compute_pool.id", s.FLINK_COMPUTE_POOL_ID),
+            ("resource.compute_pool.id", pool_id),
             (_MT_UID_DIMENSION, mt_uid),
         ]
         metrics: dict = {}

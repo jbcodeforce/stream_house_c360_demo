@@ -47,10 +47,10 @@ class _FakeClient:
     def list_materialized_tables(self) -> dict[str, dict]:
         return {name: dict(info) for name, info in self._mt_tables.items()}
 
-    def get_statement_metrics(self, statement_name: str) -> dict:
+    def get_statement_metrics(self, statement_name: str, compute_pool_id: str | None = None) -> dict:
         return dict(self._metrics)
 
-    def get_materialized_table_metrics(self, mt_uid: str) -> dict:
+    def get_materialized_table_metrics(self, mt_uid: str, compute_pool_id: str | None = None) -> dict:
         return dict(self._mt_metrics)
 
     def get_flink_pool_costs(self, start_date, end_date) -> dict[str, float]:
@@ -75,10 +75,10 @@ class _RaisingClient:
     def list_materialized_tables(self) -> dict[str, dict]:
         raise self._exc
 
-    def get_statement_metrics(self, statement_name: str) -> dict:
+    def get_statement_metrics(self, statement_name: str, compute_pool_id: str | None = None) -> dict:
         raise self._exc
 
-    def get_materialized_table_metrics(self, mt_uid: str) -> dict:
+    def get_materialized_table_metrics(self, mt_uid: str, compute_pool_id: str | None = None) -> dict:
         raise self._exc
 
     def get_flink_pool_costs(self, start_date, end_date) -> dict[str, float]:
@@ -727,3 +727,57 @@ def test_live_get_cost_no_owned_pools_is_unavailable():
                   edges=[])
     cost = providers.LiveProvider(client=_fake_client(pool_costs={"lfcp-c360": 9.0})).get_cost(graph)
     assert cost.available is False and cost.pool_ids == []
+
+
+# ---------------------------------------------------------------------------
+# Pool-aware metrics (Task 8): node's compute_pool_id scopes the Metrics query
+# ---------------------------------------------------------------------------
+
+
+def _pool_filter_values(body: dict) -> list[str]:
+    """Collect every resource.compute_pool.id value in a Metrics API filter."""
+    out: list[str] = []
+
+    def walk(f: dict) -> None:
+        if not isinstance(f, dict):
+            return
+        if f.get("field") == "resource.compute_pool.id":
+            out.append(f.get("value"))
+        for sub in f.get("filters", []) or []:
+            walk(sub)
+
+    walk(body.get("filter", {}))
+    return out
+
+
+def test_statement_metrics_uses_node_compute_pool(monkeypatch):
+    calls: list[dict] = []
+
+    def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002
+        calls.append(json)
+        return _Resp({"data": []})
+
+    monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())  # default pool lfcp-x
+
+    client.get_statement_metrics("some-statement", compute_pool_id="lfcp-crm")
+
+    assert calls, "expected Metrics API queries"
+    for body in calls:
+        assert _pool_filter_values(body) == ["lfcp-crm"]  # node pool, not the default lfcp-x
+
+
+def test_statement_metrics_defaults_to_settings_pool(monkeypatch):
+    calls: list[dict] = []
+
+    def fake_post(url, json=None, auth=None, timeout=None):  # noqa: A002
+        calls.append(json)
+        return _Resp({"data": []})
+
+    monkeypatch.setattr(confluent_client.httpx, "post", fake_post)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    client.get_statement_metrics("some-statement")  # no override -> default pool
+
+    for body in calls:
+        assert _pool_filter_values(body) == ["lfcp-x"]
