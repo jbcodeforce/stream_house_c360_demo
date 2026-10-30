@@ -24,3 +24,13 @@ clean-targets:         # directories to be removed by `dbt clean`
 
 # Configuring models
 # Full documentation: https://docs.getdbt.com/docs/configuring-models
+#
+# Route the crm data product to its own Flink compute pool so pipeline cost can
+# be attributed per product. c360 models are left unset and inherit the profile
+# default (FLINK_COMPUTE_POOL_ID). Set as a folder-level config (not per-model
+# config()) so it serializes reliably into each model's config in manifest.json,
+# which the descriptor builder reads to stamp compute_pool_id on each node.
+models:
+  streamhouse:
+    crm:
+      +compute_pool_id: "{{ env_var('FLINK_CRM_COMPUTE_POOL_ID') }}"
