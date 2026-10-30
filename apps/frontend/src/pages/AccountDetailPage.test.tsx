@@ -29,6 +29,13 @@ describe('AccountDetailPage', () => {
     expect(screen.getByText('CHECKING')).toBeInTheDocument()
   })
 
+  it('links Back to the owning customer', async () => {
+    vi.spyOn(api, 'getAccount').mockResolvedValue(account as never)
+    renderAt('a1')
+    const back = await screen.findByRole('link', { name: /back/i })
+    expect(back).toHaveAttribute('href', '/customers/c1')
+  })
+
   it('shows the error message on 404', async () => {
     vi.spyOn(api, 'getAccount').mockRejectedValue(new ApiError(404, 'Account not found'))
     renderAt('nope')

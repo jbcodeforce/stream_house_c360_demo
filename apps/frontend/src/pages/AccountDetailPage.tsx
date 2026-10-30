@@ -42,7 +42,7 @@ export default function AccountDetailPage() {
         <h1>Account {account.account_number}</h1>
         <div style={{ display: 'flex', gap: 10 }}>
           <Link to={`/accounts/${account.account_id}/edit`} className="btn">Edit</Link>
-          <Link to="/accounts" className="btn btn--secondary">Back</Link>
+          <Link to={`/customers/${account.customer_id}`} className="btn btn--secondary">Back</Link>
         </div>
       </div>
       <dl>

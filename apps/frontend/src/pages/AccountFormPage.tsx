@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ApiError } from '../api/client'
 import { createAccount, getAccount, updateAccount } from '../api/accounts'
 import { listCustomers } from '../api/customers'
@@ -33,10 +33,14 @@ function toPayload(form: FormState): AccountCreate {
 
 export default function AccountFormPage() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const isEdit = Boolean(id)
+  const presetCustomerId = searchParams.get('customer_id') ?? ''
 
-  const [form, setForm] = useState<FormState>(EMPTY)
+  const [form, setForm] = useState<FormState>(
+    presetCustomerId ? { ...EMPTY, customer_id: presetCustomerId } : EMPTY,
+  )
   const [customers, setCustomers] = useState<Customer[]>([])
   const [errors, setErrors] = useState<Partial<Record<keyof AccountCreate, string>>>({})
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -92,7 +96,7 @@ export default function AccountFormPage() {
       } else {
         await createAccount(payload)
       }
-      navigate('/accounts')
+      navigate(returnTo)
     } catch (err) {
       setSubmitError(err instanceof ApiError ? err.message : 'Failed to save account')
     }
@@ -101,6 +105,9 @@ export default function AccountFormPage() {
   function set<K extends keyof FormState>(key: K, value: string) {
     setForm({ ...form, [key]: value })
   }
+
+  const customerLocked = Boolean(presetCustomerId) || isEdit
+  const returnTo = form.customer_id ? `/customers/${form.customer_id}` : '/customers'
 
   if (loading) return <div className="status-msg">Loading…</div>
 
@@ -112,7 +119,7 @@ export default function AccountFormPage() {
       <form className="form" onSubmit={onSubmit} noValidate>
         <div className="form__row">
           <label htmlFor="customer_id">Customer</label>
-          <select id="customer_id" value={form.customer_id} onChange={(e) => set('customer_id', e.target.value)}>
+          <select id="customer_id" value={form.customer_id} disabled={customerLocked} onChange={(e) => set('customer_id', e.target.value)}>
             <option value="">Select a customer…</option>
             {customers.map((c) => (
               <option key={c.customer_id} value={c.customer_id}>
@@ -172,7 +179,7 @@ export default function AccountFormPage() {
         {submitError && <div className="form__error">{submitError}</div>}
         <div className="form__actions">
           <button type="submit" className="btn">Save</button>
-          <button type="button" className="btn btn--secondary" onClick={() => navigate('/accounts')}>Cancel</button>
+          <button type="button" className="btn btn--secondary" onClick={() => navigate(returnTo)}>Cancel</button>
         </div>
       </form>
     </div>

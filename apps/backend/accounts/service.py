@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from uuid import UUID, uuid4
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from config import settings
 from accounts import db_sink, kafka_producer, inventory
@@ -57,6 +57,10 @@ def create(data: AccountCreate) -> Account:
 
 
 def update(account_id: UUID, data: AccountUpdate) -> Account | None:
+    # Stamp the close date server-side when an account is closed without one,
+    # so the date is always consistent regardless of caller.
+    if data.status == "CLOSED" and data.closed_date is None:
+        data = data.model_copy(update={"closed_date": date.today()})
     if settings.SINK == "postgres":
         account = db_sink.update(account_id, data)
         if account is not None:
@@ -83,6 +87,12 @@ def list_all() -> list[Account]:
     if settings.SINK == "postgres":
         return db_sink.list_all()
     return inventory.list_all()
+
+
+def list_by_customer(customer_id: UUID) -> list[Account]:
+    if settings.SINK == "postgres":
+        return db_sink.get_by_customer(customer_id)
+    return [a for a in inventory.list_all() if a.customer_id == customer_id]
 
 
 def delete_by_id(account_id: UUID) -> bool:

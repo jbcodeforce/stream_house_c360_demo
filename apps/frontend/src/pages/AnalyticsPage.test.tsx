@@ -45,7 +45,7 @@ describe('AnalyticsPage', () => {
     vi.spyOn(api, 'getC360Analytics').mockResolvedValue(sample)
     renderPage()
 
-    expect(await screen.findByText('C360 Analytics')).toBeInTheDocument()
+    expect(await screen.findByText('Data Analytics')).toBeInTheDocument()
     // KPI tiles with unambiguous values.
     expect(screen.getByText('Customers')).toBeInTheDocument()
     expect(screen.getByText('31')).toBeInTheDocument() // total accounts
@@ -84,7 +84,7 @@ describe('AnalyticsPage', () => {
   it('refetches when Refresh is clicked', async () => {
     const spy = vi.spyOn(api, 'getC360Analytics').mockResolvedValue(sample)
     renderPage()
-    await screen.findByText('C360 Analytics')
+    await screen.findByText('Data Analytics')
     await userEvent.click(screen.getByRole('button', { name: /refresh/i }))
     await waitFor(() => expect(spy).toHaveBeenCalledTimes(2))
   })

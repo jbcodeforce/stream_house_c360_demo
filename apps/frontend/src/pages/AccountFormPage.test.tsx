@@ -19,7 +19,7 @@ function renderAt(path: string) {
       <Routes>
         <Route path="/accounts/new" element={<AccountFormPage />} />
         <Route path="/accounts/:id/edit" element={<AccountFormPage />} />
-        <Route path="/accounts" element={<div>list</div>} />
+        <Route path="/customers/:id" element={<div>customer page</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -29,27 +29,25 @@ describe('AccountFormPage', () => {
   it('validates required fields before submitting', async () => {
     vi.spyOn(customersApi, 'listCustomers').mockResolvedValue([customer] as never)
     const create = vi.spyOn(accountsApi, 'createAccount').mockResolvedValue({} as never)
-    renderAt('/accounts/new')
+    renderAt('/accounts/new?customer_id=c1')
     await screen.findByRole('button', { name: /save/i })
     await userEvent.click(screen.getByRole('button', { name: /save/i }))
     expect(await screen.findByText(/account number is required/i)).toBeInTheDocument()
     expect(create).not.toHaveBeenCalled()
   })
 
-  it('creates an account, omitting empty optional fields', async () => {
+  it('prefills and locks the customer from the query param, then returns to the customer page', async () => {
     vi.spyOn(customersApi, 'listCustomers').mockResolvedValue([customer] as never)
     const create = vi.spyOn(accountsApi, 'createAccount').mockResolvedValue({} as never)
-    renderAt('/accounts/new')
-    await screen.findByRole('button', { name: /save/i })
-    await userEvent.selectOptions(screen.getByLabelText(/customer/i), 'c1')
+    renderAt('/accounts/new?customer_id=c1')
+    const select = (await screen.findByLabelText(/customer/i)) as HTMLSelectElement
+    expect(select.value).toBe('c1')
+    expect(select).toBeDisabled()
     await userEvent.type(screen.getByLabelText(/account number/i), 'ACC-1')
-    await userEvent.selectOptions(screen.getByLabelText(/account type/i), 'CHECKING')
     await userEvent.click(screen.getByRole('button', { name: /save/i }))
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1))
-    const payload = create.mock.calls[0][0]
-    expect(payload).toMatchObject({ customer_id: 'c1', account_number: 'ACC-1', account_type: 'CHECKING' })
-    expect('credit_limit' in payload).toBe(false)
-    expect('closed_date' in payload).toBe(false)
+    expect(create.mock.calls[0][0]).toMatchObject({ customer_id: 'c1', account_number: 'ACC-1' })
+    expect(await screen.findByText('customer page')).toBeInTheDocument()
   })
 
   it('loads an existing account and updates via PUT in edit mode', async () => {
@@ -67,5 +65,6 @@ describe('AccountFormPage', () => {
     await userEvent.click(screen.getByRole('button', { name: /save/i }))
     await waitFor(() => expect(update).toHaveBeenCalledWith('a1', expect.objectContaining({ status: 'CLOSED' })))
     expect(create).not.toHaveBeenCalled()
+    expect(await screen.findByText('customer page')).toBeInTheDocument()
   })
 })

@@ -17,6 +17,12 @@ describe('accounts api', () => {
     expect(spy).toHaveBeenCalledWith('/accounts')
   })
 
+  it('listAccounts filters by customer when given an id', async () => {
+    const spy = vi.spyOn(client, 'request').mockResolvedValue([])
+    await listAccounts('c1')
+    expect(spy).toHaveBeenCalledWith('/accounts?customer_id=c1')
+  })
+
   it('getAccount GETs /accounts/:id', async () => {
     const spy = vi.spyOn(client, 'request').mockResolvedValue({})
     await getAccount('a1')

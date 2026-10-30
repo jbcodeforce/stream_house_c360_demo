@@ -11,11 +11,19 @@ describe('Sidebar', () => {
       </MemoryRouter>,
     )
     expect(screen.getByRole('link', { name: /customers/i })).toHaveAttribute('href', '/customers')
-    expect(screen.getByRole('link', { name: /accounts/i })).toHaveAttribute('href', '/accounts')
     expect(screen.getByRole('link', { name: /transactions/i })).toHaveAttribute(
       'href',
       '/transactions',
     )
+  })
+
+  it('has no standalone Accounts link (accounts live under a customer)', () => {
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>,
+    )
+    expect(screen.queryByRole('link', { name: /^accounts$/i })).toBeNull()
   })
 
   it('renders a Data Products link pointing to /data-products', () => {

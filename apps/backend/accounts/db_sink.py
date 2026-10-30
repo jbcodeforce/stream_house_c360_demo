@@ -137,6 +137,16 @@ def list_all() -> list[Account]:
     return [Account(**row) for row in rows]
 
 
+def get_by_customer(customer_id: UUID) -> list[Account]:
+    with db.cursor(dict_rows=True) as cur:
+        cur.execute(
+            "SELECT * FROM accounts WHERE customer_id = %s ORDER BY created_at DESC",
+            (str(customer_id),),
+        )
+        rows = cur.fetchall()
+    return [Account(**row) for row in rows]
+
+
 def delete_by_id(account_id: UUID) -> bool:
     with db.cursor(commit=True) as cur:
         cur.execute("DELETE FROM accounts WHERE account_id = %s", (str(account_id),))

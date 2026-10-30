@@ -40,6 +40,21 @@ def test_list(client, monkeypatch):
     assert len(resp.json()) == 1
 
 
+def test_list_filtered_by_customer(client, monkeypatch):
+    cid = uuid4()
+    captured = {}
+
+    def _by_customer(customer_id):
+        captured["cid"] = customer_id
+        return [_account(customer_id=cid)]
+
+    monkeypatch.setattr(service, "list_by_customer", _by_customer)
+    resp = client.get(f"/api/v1/accounts?customer_id={cid}")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+    assert captured["cid"] == cid
+
+
 def test_create_returns_201(client, monkeypatch):
     acct = _account(account_number="ACC-9")
     monkeypatch.setattr(service, "create", lambda data: acct)

@@ -18,7 +18,9 @@ def create_account(data: AccountCreate) -> Account:
 
 
 @router.get("", response_model=list[Account], status_code=200)
-def list_accounts() -> list[Account]:
+def list_accounts(customer_id: UUID | None = None) -> list[Account]:
+    if customer_id is not None:
+        return service.list_by_customer(customer_id)
     return service.list_all()
 
 

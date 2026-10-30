@@ -1,4 +1,4 @@
-import { Home, Users, Wallet, ArrowLeftRight, Workflow, BarChart3, BookOpen, Bot } from 'lucide-react'
+import { Home, Users, ArrowLeftRight, Workflow, BarChart3, BookOpen, Bot } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 // lucide-react dropped brand icons (no `Github` export as of v1.x), so use the official mark inline.
@@ -19,7 +19,6 @@ function GithubIcon({ size = 18 }: { size?: number }) {
 const links: { to: string; label: string; Icon: typeof Home; end?: boolean }[] = [
   { to: '/', label: 'Home', Icon: Home, end: true },
   { to: '/customers', label: 'Customers', Icon: Users },
-  { to: '/accounts', label: 'Accounts', Icon: Wallet },
   { to: '/transactions', label: 'Transactions', Icon: ArrowLeftRight },
   { to: '/data-products', label: 'Data Products', Icon: Workflow },
   { to: '/analytics', label: 'Analytics', Icon: BarChart3 },
