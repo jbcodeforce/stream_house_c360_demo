@@ -2,6 +2,8 @@
 
 ## Updates
 
+* 10/30/2026: Home page, kafka topic to keep chat conversation to kafka for Flink agent processing, design note improvement. Customer to account page navigation.
+* 10/29/2026: Chat to demonstrate RTCE/MCP integration for business data query in plain english. 
 * 10/27/2026: Support RTCE queries with timers. Terraform for Global key
 * 10/25/2026: Add drill down to get materialized table metrics. Add Flink snapshot 
 * 10/24/2026: Add dashboard page
@@ -14,6 +16,7 @@
 The purpose of this repo is to implement a Customer 360 streaming data pipeline integrating operational databases (PostgreSQL, DB2,...) with event streaming, Change Data Capture (CDC), and modern lakehouse analytical sinks. 
 
 ![](./docs/images/home_page.png)
+**The home page of the application to drive the demonstration**
 
 It is a demonstration of the [Streamhouse architecture](https://streamhouse.com) with Confluent Cloud solution.
 

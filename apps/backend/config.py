@@ -227,6 +227,7 @@ class Settings(BaseSettings):
             "GRAPH_DATA_MODE": self.GRAPH_DATA_MODE,
             "ANALYTICS_DATA_MODE": self.ANALYTICS_DATA_MODE,
             "CHAT_DATA_MODE": self.CHAT_DATA_MODE,
+            "CHAT_PRODUCE_CONVERSATIONS": self.CHAT_PRODUCE_CONVERSATIONS,
             "CHAT_LLM": (f"{self.LLM_MODEL} @ {self.LLM_BASE_URL}" if (self.LLM_BASE_URL and self.LLM_MODEL) else "None"),
             "CHAT_RTCE_MCP": ("derived" if self.rtce_mcp_url() else "None"),
             "FLINK_REST_ENDPOINT": self.FLINK_REST_ENDPOINT or "None",
