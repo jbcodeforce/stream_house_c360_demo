@@ -1,4 +1,4 @@
-import { Users, Wallet, ArrowLeftRight, Workflow, BarChart3, BookOpen, Bot } from 'lucide-react'
+import { Home, Users, Wallet, ArrowLeftRight, Workflow, BarChart3, BookOpen, Bot } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 
 // lucide-react dropped brand icons (no `Github` export as of v1.x), so use the official mark inline.
@@ -16,7 +16,8 @@ function GithubIcon({ size = 18 }: { size?: number }) {
   )
 }
 
-const links = [
+const links: { to: string; label: string; Icon: typeof Home; end?: boolean }[] = [
+  { to: '/', label: 'Home', Icon: Home, end: true },
   { to: '/customers', label: 'Customers', Icon: Users },
   { to: '/accounts', label: 'Accounts', Icon: Wallet },
   { to: '/transactions', label: 'Transactions', Icon: ArrowLeftRight },
@@ -29,10 +30,11 @@ export default function Sidebar() {
   return (
     <div className="sidebar-container">
       <nav className="sidebar">
-        {links.map(({ to, label, Icon }) => (
+        {links.map(({ to, label, Icon, end }) => (
           <NavLink
             key={to}
             to={to}
+            end={end}
             className={({ isActive }) => `sidebar__link${isActive ? ' sidebar__link--active' : ''}`}
           >
             <Icon size={18} />

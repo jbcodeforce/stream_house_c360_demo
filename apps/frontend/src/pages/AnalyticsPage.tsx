@@ -87,11 +87,12 @@ export default function AnalyticsPage() {
     <div>
       <div className="page-header">
         <div>
-          <h1>C360 Analytics</h1>
+          <h1>Data Analytics</h1>
           <p className="page-subtitle">
-            Snapshot of the <code>fct_c360_profile</code> materialized table served by the
+            Snapshot of the <code>fct_c360_profile</code>, <code>fct_crm_summary</code>...  materialized tables served by the
             real-time context engine or snapshot query.
           </p>
+          <a className="page-subtitle" href="/data-products">View Current Data Products</a>
         </div>
         <button className="btn btn--secondary btn--icon" onClick={() => void load()} disabled={loading}>
           <RefreshCw size={14} /> Refresh

@@ -42,6 +42,22 @@ variable "cc_sa_env_mgr" {
 }
 
 ################################################################################
+# Topics
+################################################################################
+
+variable "agent_conversations_topic" {
+  type        = string
+  description = "Name of the topic holding chat request/response events for downstream Flink intent analysis"
+  default     = "agent_conversations"
+}
+
+variable "agent_conversations_partitions" {
+  type        = number
+  description = "Partition count for the agent_conversations topic"
+  default     = 6
+}
+
+################################################################################
 # Flink
 ################################################################################
 

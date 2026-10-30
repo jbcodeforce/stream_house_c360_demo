@@ -63,7 +63,17 @@ async def get_reply(request: ChatRequest) -> ChatResponse:
         from chat import agent  # late import: only load agno on the live path
 
         reply = await agent.run_agent(message, request.history, session_id)
-        return ChatResponse(reply=reply or "(no answer)", source_mode="live", session_id=session_id)
+        answer = reply or "(no answer)"
+
+        # Record the turn for downstream Flink intent analysis. Best-effort: the
+        # producer never raises, so a Kafka hiccup can't break the reply.
+        from chat import conversation_producer
+
+        conversation_producer.produce_turn(
+            session_id, message, answer,
+            model=config.settings.LLM_MODEL, source_mode="live",
+        )
+        return ChatResponse(reply=answer, source_mode="live", session_id=session_id)
     except Exception:
         logger.exception("chat agent failed")
         return ChatResponse(

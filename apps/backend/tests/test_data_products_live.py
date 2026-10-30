@@ -9,6 +9,7 @@ made.
 from __future__ import annotations
 
 import types
+from datetime import datetime, timezone
 
 import httpx
 
@@ -198,6 +199,22 @@ def test_live_streaming_node_metrics_use_statement_name_not_mt():
     assert m.compute_pool_cfu == 2.0  # statement path, not the MT's 99.0
 
 
+def test_uptime_seconds_from_iso_created_at():
+    now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    assert providers._uptime_seconds("2026-01-01T11:00:00Z", now=now) == 3600
+
+
+def test_uptime_seconds_none_when_missing_or_unparseable():
+    assert providers._uptime_seconds(None) is None
+    assert providers._uptime_seconds("not-a-timestamp") is None
+
+
+def test_uptime_seconds_none_when_created_in_future():
+    # Clock skew / a not-yet-started statement must not report negative uptime.
+    now = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    assert providers._uptime_seconds("2026-01-01T13:00:00Z", now=now) is None
+
+
 def test_live_streaming_node_sql_comes_from_statement_object():
     # A streaming table is a regular Flink statement, so its defining SQL comes
     # from the statement object (spec.statement), matched by statement_name —
@@ -209,6 +226,28 @@ def test_live_streaming_node_sql_comes_from_statement_object():
     )
     m = providers.LiveProvider(client=client).get_metrics(_mixed_graph(), "stream_node")
     assert m.sql == "INSERT INTO stream_node SELECT * FROM src"
+
+
+def test_live_streaming_node_uptime_from_statement_created_at():
+    # uptime_seconds for a streaming table is derived from the statement object's
+    # metadata.created_at.
+    client = _fake_client(
+        statements={"stmt-stream": {"phase": "RUNNING", "uid": "s-1", "sql": "X",
+                                    "created_at": "2020-01-01T00:00:00Z"}},
+    )
+    m = providers.LiveProvider(client=client).get_metrics(_mixed_graph(), "stream_node")
+    assert m.uptime_seconds is not None and m.uptime_seconds > 0
+
+
+def test_live_mt_node_uptime_from_created_at():
+    # uptime_seconds for a materialized table is derived from the MT object's
+    # metadata.created_at.
+    client = _fake_client(
+        mt_tables={"mt_node": {"phase": "RUNNING", "uid": "mt-1",
+                               "created_at": "2020-01-01T00:00:00Z"}},
+    )
+    m = providers.LiveProvider(client=client).get_metrics(_mixed_graph(), "mt_node")
+    assert m.uptime_seconds is not None and m.uptime_seconds > 0
 
 
 # --- real-ConfluentClient HTTP-layer tests (httpx mocked, no network) ---
@@ -365,11 +404,11 @@ def test_list_materialized_tables_parses_name_phase_uid(monkeypatch):
         captured["url"] = url
         captured["auth"] = auth
         return _Resp({"data": [
-            {"name": "src_customers", "metadata": {"uid": "mt-1"},
+            {"name": "src_customers", "metadata": {"uid": "mt-1", "created_at": "2026-01-01T00:00:00Z"},
              "status": {"phase": "RUNNING", "version": 3},
              "spec": {"query": "SELECT * FROM cust"}},
             {"name": "fct_c360_profile", "metadata": {"uid": "mt-2"},
-             "status": {"phase": "FAILED", "version": 1}},  # no spec.query
+             "status": {"phase": "FAILED", "version": 1}},  # no spec.query, no created_at
         ]})
 
     monkeypatch.setattr(confluent_client.httpx, "get", fake_get)
@@ -382,11 +421,13 @@ def test_list_materialized_tables_parses_name_phase_uid(monkeypatch):
         "org-1/environments/env-1/materialized-tables"
     )
     assert captured["auth"] == ("fk", "fs")
-    # The MT's defining SQL (spec.query) rides along for the drill-down panel;
-    # it's None when the spec omits it.
+    # The MT's defining SQL (spec.query) and start time (metadata.created_at) ride
+    # along for the drill-down panel; each is None when the spec/metadata omits it.
     assert tables == {
-        "src_customers": {"phase": "RUNNING", "uid": "mt-1", "version": 3, "sql": "SELECT * FROM cust"},
-        "fct_c360_profile": {"phase": "FAILED", "uid": "mt-2", "version": 1, "sql": None},
+        "src_customers": {"phase": "RUNNING", "uid": "mt-1", "version": 3,
+                          "sql": "SELECT * FROM cust", "created_at": "2026-01-01T00:00:00Z"},
+        "fct_c360_profile": {"phase": "FAILED", "uid": "mt-2", "version": 1,
+                             "sql": None, "created_at": None},
     }
 
 
@@ -479,11 +520,11 @@ def test_list_statements_parses_name_phase_sql_uid(monkeypatch):
         captured["url"] = url
         captured["auth"] = auth
         return _Resp({"data": [
-            {"name": "stmt-a", "metadata": {"uid": "s-1"},
+            {"name": "stmt-a", "metadata": {"uid": "s-1", "created_at": "2026-01-01T00:00:00Z"},
              "status": {"phase": "RUNNING"},
              "spec": {"statement": "INSERT INTO a SELECT * FROM b"}},
             {"name": "stmt-b", "metadata": {"uid": "s-2"},
-             "status": {"phase": "FAILED"}},  # no spec.statement
+             "status": {"phase": "FAILED"}},  # no spec.statement, no created_at
         ]})
 
     monkeypatch.setattr(confluent_client.httpx, "get", fake_get)
@@ -496,11 +537,13 @@ def test_list_statements_parses_name_phase_sql_uid(monkeypatch):
         "org-1/environments/env-1/statements"
     )
     assert captured["auth"] == ("fk", "fs")
-    # The statement's defining SQL (spec.statement) rides along for the drill-down
-    # panel; it's None when the spec omits it.
+    # The statement's defining SQL (spec.statement) and start time
+    # (metadata.created_at) ride along for the drill-down panel; each is None when
+    # the statement omits it.
     assert statements == {
-        "stmt-a": {"phase": "RUNNING", "uid": "s-1", "sql": "INSERT INTO a SELECT * FROM b"},
-        "stmt-b": {"phase": "FAILED", "uid": "s-2", "sql": None},
+        "stmt-a": {"phase": "RUNNING", "uid": "s-1",
+                   "sql": "INSERT INTO a SELECT * FROM b", "created_at": "2026-01-01T00:00:00Z"},
+        "stmt-b": {"phase": "FAILED", "uid": "s-2", "sql": None, "created_at": None},
     }
 
 

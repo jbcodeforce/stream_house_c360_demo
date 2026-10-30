@@ -210,11 +210,14 @@ class ConfluentClient:
             name = item.get("name")
             if not name:
                 continue
+            metadata = item.get("metadata") or {}
             statements[name] = {
                 "phase": (item.get("status") or {}).get("phase"),
-                "uid": (item.get("metadata") or {}).get("uid"),
+                "uid": metadata.get("uid"),
                 # The statement's defining SQL (spec.statement), for the drill-down panel.
                 "sql": (item.get("spec") or {}).get("statement"),
+                # Start time (metadata.created_at), the basis for uptime_seconds.
+                "created_at": metadata.get("created_at"),
             }
         return statements
 
@@ -258,14 +261,17 @@ class ConfluentClient:
             if not name:
                 continue
             status = item.get("status") or {}
+            metadata = item.get("metadata") or {}
             tables[name] = {
                 "phase": status.get("phase"),
-                "uid": (item.get("metadata") or {}).get("uid"),
+                "uid": metadata.get("uid"),
                 "version": status.get("version"),
                 # The MT's defining SQL (the CREATE ... AS SELECT body), for the
                 # drill-down panel. The MT's DDL statement isn't in the
                 # Statements list, so spec.query is the live source for it.
                 "sql": (item.get("spec") or {}).get("query"),
+                # Start time (metadata.created_at), the basis for uptime_seconds.
+                "created_at": metadata.get("created_at"),
             }
         return tables
 

@@ -99,6 +99,11 @@ class Settings(BaseSettings):
     KAFKA_TOPIC_CUSTOMERS: str = "cdc.public.customers"
     KAFKA_TOPIC_ACCOUNTS: str = "cdc.public.accounts"
     KAFKA_TOPIC_TRANSACTIONS: str = "cdc.public.transactions"
+    # Agent-conversations history topic (owned by Terraform, see
+    # IaC/ccloud/topics.tf). The chat backend produces request/response events
+    # here for a downstream Flink agent to classify intents. The value schema is
+    # registered at runtime (chat/conversation_producer.py); the topic is not.
+    KAFKA_TOPIC_AGENT_CONVERSATIONS: str = "agent_conversations"
 
     # Data Products graph page: selects the status/metrics provider.
     # "mock" / "mock-lag" use deterministic fixtures; "live" talks to
@@ -117,6 +122,12 @@ class Settings(BaseSettings):
     # customer questions via the getData point-lookup tool over fct_c360_profile.
     # A "live" request with missing LLM/MCP config degrades to the stub reply.
     CHAT_DATA_MODE: str = "stub"
+    # When True, each live chat turn is also emitted to the agent_conversations
+    # topic (request + response as two linked Avro events) for downstream Flink
+    # intent analysis. Best-effort: a Kafka failure never breaks the reply.
+    # Off by default so the no-infra test suite and a laptop without a broker
+    # never attempt a real connection.
+    CHAT_PRODUCE_CONVERSATIONS: bool = False
     # Local OpenAI-compatible LLM (MLX server). base_url like http://127.0.0.1:7999/v1.
     LLM_BASE_URL: str | None = None
     LLM_MODEL: str | None = None

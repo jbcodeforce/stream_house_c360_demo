@@ -128,7 +128,7 @@ export default function CustomerLookup({ title, subtitle, badge, search, getProf
           <span className="lookup-form__label">Customer name</span>
           <input
             type="text"
-            placeholder="e.g. Sharma"
+            placeholder="e.g. Carter"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />

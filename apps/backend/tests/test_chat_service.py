@@ -145,6 +145,71 @@ def test_live_empty_answer_is_replaced(monkeypatch):
     assert resp.reply == "(no answer)"
 
 
+def test_live_turn_is_produced_to_agent_conversations(monkeypatch):
+    _set_live(monkeypatch)
+    monkeypatch.setattr(config.settings, "LLM_MODEL", "Ornith-1.5-9B-MLX-8bit")
+
+    async def fake_run(message, history, session_id=None):
+        return "Customer 42 is Jane Doe, RETAIL segment."
+
+    monkeypatch.setattr(chat_agent, "run_agent", fake_run)
+
+    from chat import conversation_producer
+    calls = []
+    monkeypatch.setattr(
+        conversation_producer, "produce_turn",
+        lambda session_id, request_text, response_text, **kw: calls.append(
+            (session_id, request_text, response_text, kw)
+        ),
+    )
+
+    asyncio.run(service.get_reply(ChatRequest(
+        message="Who is customer 42?", session_id="sess-abc",
+    )))
+
+    assert len(calls) == 1
+    session_id, request_text, response_text, kw = calls[0]
+    assert session_id == "sess-abc"
+    assert request_text == "Who is customer 42?"
+    assert response_text == "Customer 42 is Jane Doe, RETAIL segment."
+    assert kw["model"] == "Ornith-1.5-9B-MLX-8bit"
+    assert kw["source_mode"] == "live"
+
+
+def test_stub_turn_is_not_produced(monkeypatch):
+    monkeypatch.setattr(config.settings, "CHAT_DATA_MODE", "stub")
+
+    from chat import conversation_producer
+    calls = []
+    monkeypatch.setattr(
+        conversation_producer, "produce_turn",
+        lambda *a, **k: calls.append((a, k)),
+    )
+
+    asyncio.run(service.get_reply(ChatRequest(message="hello", session_id="s")))
+    assert calls == []
+
+
+def test_agent_failure_produces_no_turn(monkeypatch):
+    _set_live(monkeypatch)
+
+    async def boom(message, history, session_id=None):
+        raise RuntimeError("MCP unreachable")
+
+    monkeypatch.setattr(chat_agent, "run_agent", boom)
+
+    from chat import conversation_producer
+    calls = []
+    monkeypatch.setattr(
+        conversation_producer, "produce_turn",
+        lambda *a, **k: calls.append((a, k)),
+    )
+
+    resp = asyncio.run(service.get_reply(ChatRequest(message="anything")))
+    assert resp.source_mode == "error"
+    assert calls == []
+
+
 def test_reset_session_delegates_to_agent(monkeypatch):
     seen = {}
 

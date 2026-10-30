@@ -10,6 +10,7 @@ immediately.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Protocol
 
 from data_products import mock_data
@@ -19,6 +20,27 @@ from data_products.models import Graph, NodeMetrics, NodeStatus, StatusResponse,
 logger = logging.getLogger(__name__)
 
 _VALID_PHASES = frozenset({"RUNNING", "PENDING", "DEGRADED", "FAILED", "STOPPED", "UNKNOWN"})
+
+
+def _uptime_seconds(created_at: str | None, now: datetime | None = None) -> int | None:
+    """Whole seconds a node has been running, from its ``metadata.created_at``.
+
+    Returns ``None`` when ``created_at`` is absent/unparseable, or when it is in
+    the future (clock skew / a not-yet-started node) — never a negative uptime.
+    ``now`` defaults to the current UTC time (injected in tests for determinism).
+    """
+    if not created_at:
+        return None
+    try:
+        # Accept a trailing "Z" (UTC) as well as explicit offsets.
+        started = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    current = now or datetime.now(timezone.utc)
+    delta = (current - started).total_seconds()
+    return int(delta) if delta >= 0 else None
 
 
 class StatusProvider(Protocol):
@@ -216,8 +238,12 @@ class LiveProvider:
                 # on the statement object (spec.statement), matched by name —
                 # parallel to the MT branch reading spec.query below.
                 entry = self._safe_statements().get(node.statement_name)
-                if entry and entry.get("sql"):
-                    raw["sql"] = entry["sql"]
+                if entry:
+                    if entry.get("sql"):
+                        raw["sql"] = entry["sql"]
+                    uptime = _uptime_seconds(entry.get("created_at"))
+                    if uptime is not None:
+                        raw["uptime_seconds"] = uptime
         else:
             entry = self._mt_entry_for(node, mt_tables)
             if entry:
@@ -225,6 +251,9 @@ class LiveProvider:
                     raw.update(self._safe_mt_metrics(entry["uid"]))
                 if entry.get("sql"):
                     raw["sql"] = entry["sql"]
+                uptime = _uptime_seconds(entry.get("created_at"))
+                if uptime is not None:
+                    raw["uptime_seconds"] = uptime
 
         return NodeMetrics(
             node_id=node_id,

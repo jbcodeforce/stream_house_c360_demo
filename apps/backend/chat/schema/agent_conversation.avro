@@ -1,0 +1,16 @@
+{
+  "type": "record",
+  "name": "AgentConversationEvent",
+  "namespace": "c360.chat",
+  "doc": "One side of a chat turn with the real-time context engine. A turn emits two records sharing a turn_id: type='request' (the user's message) and type='response' (the agent's reply).",
+  "fields": [
+    {"name": "event_id", "type": "string", "doc": "Unique id of this record (UUID)."},
+    {"name": "turn_id", "type": "string", "doc": "Shared by the request and response of one turn, so they can be reunited downstream."},
+    {"name": "session_id", "type": ["null", "string"], "default": null, "doc": "The agno/chat session id (UUID minted by the UI); also the Kafka message key."},
+    {"name": "type", "type": "string", "doc": "'request' or 'response'."},
+    {"name": "content", "type": "string", "doc": "The message text — user question or agent reply."},
+    {"name": "ts_ms", "type": "long", "doc": "Produce time, epoch milliseconds."},
+    {"name": "model", "type": ["null", "string"], "default": null, "doc": "LLM model id; set on response records only."},
+    {"name": "source_mode", "type": ["null", "string"], "default": null, "doc": "Which path answered ('live'); set on response records only."}
+  ]
+}
