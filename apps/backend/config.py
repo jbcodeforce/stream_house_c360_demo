@@ -142,13 +142,9 @@ class Settings(BaseSettings):
     # "mock" folds a deterministic fixture; "live" runs five snapshot SELECTs
     # against the CRM data products (fct_crm_summary / _by_segment / _by_generation
     # / _by_gender / _by_country) via the confluent-sql driver — see
-    # analytics/crm_provider.py (needs the FLINK_*/CLOUD_* coords incl.
+    # analytics/providers.py (needs the FLINK_*/CLOUD_* coords incl.
     # KAFKA_CLUSTER_ID; no FLINK_CATALOG — the environment resolves the catalog).
     ANALYTICS_DATA_MODE: str = "mock"
-    # Row cap once read by the full-table snapshot (providers.get_rows); now dead
-    # — the dashboard reads the pre-aggregated CRM products and the per-customer
-    # lookups use their own caps. Kept until get_rows is removed (planned cleanup).
-    ANALYTICS_SNAPSHOT_LIMIT: int = 50_000
 
     # Live-mode credentials (unused until Task 3's LiveProvider).
     CONFLUENT_CLOUD_API_KEY: str | None = None
@@ -158,6 +154,11 @@ class Settings(BaseSettings):
     FLINK_ORG_ID: str | None = None
     FLINK_ENV_ID: str | None = None
     FLINK_COMPUTE_POOL_ID: str | None = None
+    # Second compute pool backing the crm data product (c360 uses
+    # FLINK_COMPUTE_POOL_ID). dbt routes crm models here and the Cost API sums
+    # billed CFUs per pool. Wired from Terraform output flink_crm_compute_pool_id
+    # by scripts/set_env_from_tf.sh.
+    FLINK_CRM_COMPUTE_POOL_ID: str | None = None
     FLINK_REST_ENDPOINT: str | None = None
     # Catalog/database for Flink SQL snapshot queries — the Confluent Cloud
     # environment and Kafka cluster *display names* (not their IDs).
@@ -231,6 +232,8 @@ class Settings(BaseSettings):
             "CHAT_LLM": (f"{self.LLM_MODEL} @ {self.LLM_BASE_URL}" if (self.LLM_BASE_URL and self.LLM_MODEL) else "None"),
             "CHAT_RTCE_MCP": ("derived" if self.rtce_mcp_url() else "None"),
             "FLINK_REST_ENDPOINT": self.FLINK_REST_ENDPOINT or "None",
+            "FLINK_COMPUTE_POOL_ID": self.FLINK_COMPUTE_POOL_ID or "None",
+            "FLINK_CRM_COMPUTE_POOL_ID": self.FLINK_CRM_COMPUTE_POOL_ID or "None",
             "RTCE_LIGHTNING": (
                 "configured"
                 if (self.CLOUD_REGION and self.KAFKA_CLUSTER_ID and self.CONFLUENT_GLOBAL_KEY)

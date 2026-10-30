@@ -26,6 +26,16 @@ def test_resolve_env_file_custom(tmp_path):
         assert res == str(custom_env)
 
 
+def test_crm_compute_pool_in_settings_and_summary():
+    # Defaults to None and surfaces in the config summary.
+    assert Settings().FLINK_CRM_COMPUTE_POOL_ID is None
+    assert Settings().summary()["FLINK_CRM_COMPUTE_POOL_ID"] == "None"
+    # Carries a provided value through to the summary.
+    settings = Settings(FLINK_CRM_COMPUTE_POOL_ID="lfcp-crm")
+    assert settings.FLINK_CRM_COMPUTE_POOL_ID == "lfcp-crm"
+    assert settings.summary()["FLINK_CRM_COMPUTE_POOL_ID"] == "lfcp-crm"
+
+
 def test_settings_summary_and_log():
     settings = Settings(
         SINK="postgres",
