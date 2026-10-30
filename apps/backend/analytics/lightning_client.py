@@ -53,16 +53,23 @@ _AUTH_ERROR_HINT = (
 )
 
 
-def _log_query_error(exc: Exception) -> None:
+def _key_prefix(key: object) -> str:
+    """First 8 chars of an API key id for traces — enough to tell which key is
+    loaded, never the secret. ``<unset>`` when empty."""
+    return f"{str(key)[:8]}…" if key else "<unset>"
+
+
+def _log_query_error(exc: Exception, context: str) -> None:
     """Surface the Lightning API failure actionably — the response body carries
-    the precise reason (a 401 says whether the key authenticates the org)."""
+    the precise reason (a 401 says whether the key authenticates the org), and
+    ``context`` names the loaded key prefix so a stale/wrong key is obvious."""
     if isinstance(exc, httpx.HTTPStatusError):
         status = exc.response.status_code
         body = exc.response.text[:800]
         hint = _AUTH_ERROR_HINT if status in (401, 403) else ""
-        logger.warning("LightningClient: Lightning API %s: %s%s", status, body, hint)
+        logger.warning("LightningClient: Lightning API %s (%s): %s%s", status, context, body, hint)
     else:
-        logger.warning("LightningClient: query failed", exc_info=True)
+        logger.warning("LightningClient: query failed (%s)", context, exc_info=True)
 
 
 class LightningClient:
@@ -107,7 +114,10 @@ class LightningClient:
             "options": {"max_result_rows": max_rows, "result_format": "JSON"},
             "client_info": {},
         }
-        context = f"catalog={s.FLINK_ENV_ID} database={s.KAFKA_CLUSTER_ID}"
+        context = (
+            f"catalog={s.FLINK_ENV_ID} database={s.KAFKA_CLUSTER_ID} "
+            f"key={_key_prefix(s.CONFLUENT_GLOBAL_KEY)}"
+        )
         logger.info("LightningClient: running Lightning query (%s): %s", context, sql)
         try:
             response = httpx.post(
@@ -119,7 +129,7 @@ class LightningClient:
             response.raise_for_status()
             payload = response.json()
         except (httpx.HTTPError, ValueError) as exc:
-            _log_query_error(exc)
+            _log_query_error(exc, context)
             return []
 
         rows = self._rows(payload, fallback_columns)

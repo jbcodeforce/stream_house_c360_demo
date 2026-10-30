@@ -114,3 +114,15 @@ def test_unconfigured_returns_empty_without_calling(monkeypatch):
 def test_http_error_degrades_to_empty(monkeypatch):
     _install_post(monkeypatch, lambda body: httpx.Response(500, text="boom"))
     assert LightningClient(_SETTINGS).query("SELECT ...", _SEARCH_COLS, max_rows=1) == []
+
+
+def test_auth_error_trace_includes_loaded_key_prefix(monkeypatch, caplog):
+    # A 401 almost always means the WRONG/stale CONFLUENT_GLOBAL_KEY is loaded,
+    # so the trace must name the prefix of the key actually used (never the secret).
+    import logging
+
+    _install_post(monkeypatch, lambda body: httpx.Response(401, text='{"code":"unauthenticated"}'))
+    with caplog.at_level(logging.WARNING, logger="analytics.lightning_client"):
+        LightningClient(_SETTINGS).query("SELECT ...", _SEARCH_COLS, max_rows=1)
+    assert "global-k" in caplog.text  # prefix of CONFLUENT_GLOBAL_KEY="global-k"
+    assert "global-s" not in caplog.text  # the secret is never logged
