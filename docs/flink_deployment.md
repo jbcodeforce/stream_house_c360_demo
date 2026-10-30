@@ -1,4 +1,5 @@
 # Flink Project Management
+
 This section addresses the Flink pipeline definition and management using [Confluent dbt](https://pypi.org/project/dbt-confluent/) plugin.
 
 ## What is built
@@ -7,7 +8,7 @@ We want to implement the following pipeline to process the raw/bronze layer of r
 
 ![](./diagrams/stream-flink.drawio.png)
 
-To a silver layer which includes clean source data, with no duplicate, reflecting a canonical model and filtered records. The golden layer includes star schema dimensions and facts. For this demonstration the c360-profile defines analytics about a customer based on the buying transactions done so far.
+To a silver layer which includes clean source data, with no duplicate, reflecting a canonical model and filtered records. The golden layer includes the `star schema` dimensions and facts. For this demonstration the c360-profile defines analytics about a customer based on the buying transactions done so far.
 
 The Confluent Cloud Flink statement organization reflects the medaillon and star schema structure.  The Flink statements run in a compute pool, already created via the terraform deployment (or reused but referenced in FLINK_COMPUTE_POOL_ID).
 

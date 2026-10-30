@@ -10,8 +10,8 @@ This note is for explaining the code of the backend and vite application.
 * [x] Local persistence with Postgresql database running in container
 * [x] Kafka producer to write Debezium schema compliant records.
 * [x] TDD for backend and frontend
-* [x] Run snapshot query from UI to backend to Confluent cloud
-* [ ] Execute lightning query from a backend and display result to Frontend
+* [x] Run snapshot queries from UI to backend to Confluent cloud on top of fact tables
+* [x] Execute lightning query from a backend and display result to Frontend
 
 ## Design
 
@@ -165,8 +165,29 @@ The database has three main tables:
 
 To query the customer profiles directly from Kafka, there are multiple different capabilities to use. Using SQL as an interface, and Streamhouse architecture, it is possible to leverage Flink snapshot query with the Confluent Cloud REST API for flink statement, or using the new Confluent lightning query via Real-Time Contect Engine.
 
+### Analytics Dashboard — CRM Data Products
+
+The C360 analytics dashboard (KPI tiles and distribution charts) does not pull every customer row and aggregate in the backend. The aggregates are materialized in Flink as a dedicated **CRM analytic data product** — five small tables built from `fct_c360_profile`:
+
+| Table | Grain | Feeds in the dashboard |
+|---|---|---|
+| `fct_crm_summary` | one global row (`qscope='ALL'`) | KPI totals, averages, data-quality rollup |
+| `fct_crm_by_segment` | per customer segment | segment counts + balance-by-segment |
+| `fct_crm_by_generation` | per generation segment | generation counts |
+| `fct_crm_by_gender` | per gender | gender counts |
+| `fct_crm_by_country` | per country | country counts (top-8 + "Other") |
+
+In live mode the backend (`analytics/crm_provider.py`) runs five trivial `SELECT *` **snapshot queries** — one per table — concurrently through the `confluent-sql` DB-API driver, and `analytics/crm_aggregate.py` folds the pre-aggregated rows into the dashboard payload (`DataAnalytics`). Only the summary rows cross the wire; the aggregation stays in Flink. Mock mode still folds the local fixture, so the dashboard renders with no infrastructure.
+
 ### Snapshot Query
 
+The frontend exposes a widget to query customer profile given his/her name. Once clicking on `Search` the backend initiates a Flink Snapshot query to get the data out of the fact c360 profile topic/table:
+
+![](./images/snap_query_carter.png)
+
+The process flow looks like:
+
+![](./diagrams/snapshot_q_app_flow.drawio.png)
 
 ### Lightning Query Integration
 
@@ -199,6 +220,8 @@ It is interresting to see that a MCP ClientSession is stateful and single-sessio
 Here is component view of the integration:
 
 ![](./diagrams/chat_rtce.drawio.png)
+
+### Get Data Product Lineage and Metrics
 
 ## Tests
 

@@ -86,7 +86,7 @@ KAFKA_PRODUCE_ENABLED=false
 
 ### Deploy the Flink Statements / Materialized Tables
 
-* Deploy the Flink statement using dbt
+* Deploy the Flink statements using dbt
     ```sh
     cd pipelines
     source .venv/bin/activate
@@ -147,10 +147,11 @@ For example selecting the eye icon on James Carter brings this view:
 
 #### Accounts Management
 
-The accounts page presents a list of account per customer loaded from the database:
+The accounts page presents a list of accounts per customer loaded from the database:
 
 ![](./images/web_accounts.png)
 
+This view is only for demonstration purpose. It is possible to add an account, but the real use case will be to add an account from the customer view. 
 
 #### Transaction Management
 
@@ -158,11 +159,13 @@ The transactions page presents a list of current transactions in the database:
 
 ![](./images/web_tx.png)
 
+Again this is for demonstration purpose.
+
 To simulate a week of activity, click **Generate 200 transactions**. The backend creates 200 transactions on existing accounts, timestamped from 7 days ago in 15-minute increments, inserts them in Postgres and (when `KAFKA_PRODUCE_ENABLED=true` and no CDC connector owns Kafka) publishes them to the `cdc.public.transactions` topic. The page then shows the newly created transactions (the list is not kept after a browser refresh).
 
 ### Data products view
 
-This page demonstrates the presentation of metrics per data analytics as a product. 
+This page demonstrates the presentation of Flink statement lineage and metrics per data analytics product. 
 
 * First select the analytics product
     ![](./images/select-data-product.png)
@@ -175,14 +178,17 @@ This page demonstrates the presentation of metrics per data analytics as a produ
 
     The message in and out should be greater than 0 when there is record flowing into the topics.
 
+*Recall:* the architecture to support this use case is presented in the figure below:
+![]()
+
 ### Analytics Dashboard
 
 The Analytics page is an illustration of what can be done by directly accessing data in kafka
 
-1. Get the aggregation cross customers, by querying, via Flink snapshot query, the `fct_c360_profile` topic
+1. Get the aggregation cross customers. Rather than pulling every customer row and folding it in the backend, the cross-customer aggregates are built in Flink as a **CRM analytic data product** — five small materialized tables (`fct_crm_summary`, `fct_crm_by_segment`, `fct_crm_by_generation`, `fct_crm_by_gender`, `fct_crm_by_country`) derived from `fct_c360_profile`. The backend reads them with five simple `SELECT *` **snapshot queries** run concurrently through the `confluent-sql` driver — the aggregation work stays in Flink and only the summary rows cross the wire. This is the Streamhouse pattern: build analytics products in Flink, expose them through a plain query.
     ![](./images/fct_c360_profile_db.png)
 
-    The backend also returns the elapse time from a client point of view. Arrounf 6.60s to get results, using Flink Snapshot query.
+    The backend also returns the elapsed time from a client point of view. A snapshot query spins up a Flink statement, so each runs in roughly 5–8s; the five run concurrently so the dashboard load is bounded by the slowest, not their sum.
 
 1. Use the snapshot query, which creates a Flink Statement, to get a data for a user:
     ![](./images/snap_query_carter.png)

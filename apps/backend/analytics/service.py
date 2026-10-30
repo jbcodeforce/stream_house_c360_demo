@@ -12,7 +12,7 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from analytics import crm_aggregate, crm_provider, mock_data, providers
-from analytics.aggregate import aggregate
+from analytics.aggregate import mock_aggregate
 from analytics.models import (
     DataAnalytics,
     CustomerMatch,
@@ -63,7 +63,7 @@ def get_data_analytics() -> DataAnalytics:
     mode = providers._mode()
     if mode == "mock":
         rows, query_ms = _timed(lambda: list(mock_data.PROFILE_SNAPSHOT))
-        return aggregate(rows, source_mode="mock", query_ms=query_ms)
+        return mock_aggregate(rows, source_mode="mock", query_ms=query_ms)
     result_sets, query_ms = _timed(crm_provider.fetch_crm_result_sets)
     return crm_aggregate.assemble(*result_sets, source_mode="live", query_ms=query_ms)
 

@@ -39,7 +39,7 @@ def _counts(rows: list[dict], field: str, *, default: str = "Unknown") -> list[C
     return [CategoryCount(label=label, count=count) for label, count in ordered]
 
 
-def aggregate(rows: list[dict], source_mode: str, query_ms: float = 0.0) -> DataAnalytics:
+def mock_aggregate(rows: list[dict], source_mode: str, query_ms: float = 0.0) -> DataAnalytics:
     """Fold profile rows into the full dashboard payload.
 
     ``query_ms`` is the backend-measured time the snapshot query took (0 when not

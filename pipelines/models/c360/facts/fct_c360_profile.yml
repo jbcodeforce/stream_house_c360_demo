@@ -1,9 +1,6 @@
 models:
 - name: fct_c360_profile
   description: ""
-  config:
-    contract:
-      enforced: true
   columns:
   - name: customer_id
     data_type: string

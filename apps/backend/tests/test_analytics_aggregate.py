@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import pytest
 
-from analytics.aggregate import aggregate
+from analytics.aggregate import mock_aggregate
 from analytics.mock_data import PROFILE_SNAPSHOT
 
 
 @pytest.fixture
 def result():
-    return aggregate(PROFILE_SNAPSHOT, source_mode="mock")
+    return mock_aggregate(PROFILE_SNAPSHOT, source_mode="mock")
 
 
 def test_headline_totals(result):
@@ -59,7 +59,7 @@ def test_balance_by_segment_ordered_by_value(result):
 
 
 def test_empty_snapshot_is_safe():
-    r = aggregate([], source_mode="live")
+    r = mock_aggregate([], source_mode="live")
     assert r.row_count == 0
     assert r.total_customers == 0
     assert r.total_balance == 0
@@ -71,7 +71,7 @@ def test_empty_snapshot_is_safe():
 
 def test_country_top_n_folds_tail_into_other():
     rows = [{"country": f"C{i}"} for i in range(12)]
-    r = aggregate(rows, source_mode="mock")
+    r = mock_aggregate(rows, source_mode="mock")
     labels = [c.label for c in r.by_country]
     assert labels[-1] == "Other"
     # 8 head countries + the Other bucket.
