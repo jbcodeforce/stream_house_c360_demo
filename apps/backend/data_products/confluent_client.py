@@ -78,6 +78,13 @@ def _log_metrics_error(exc: Exception, context: str) -> None:
         logger.warning("ConfluentClient: Metrics API query failed for %s", context, exc_info=True)
 
 _REQUEST_TIMEOUT_SECONDS = 5.0
+# The Flink SQL REST list endpoints paginate; the default page size is small
+# (~10), so a single GET silently truncates an environment with many statements
+# or materialized tables — the crm streaming statements fell off page one and
+# showed as UNKNOWN/not-running. Request the max page size and follow
+# `metadata.next`, capped against a cyclic cursor.
+_FLINK_PAGE_SIZE = 100
+_FLINK_MAX_PAGES = 100
 # Confluent Cloud Metrics (Telemetry) API — query endpoint is
 # {host}/v2/metrics/{dataset}/{query-type}; for Cloud resources the dataset
 # is "cloud" and the query type is "query". The API authenticates with a
@@ -149,6 +156,35 @@ class ConfluentClient:
     def __init__(self, settings_obj: config.Settings | None = None) -> None:
         self._settings = settings_obj if settings_obj is not None else config.settings
 
+    def _get_flink_collection(self, url: str) -> list[dict]:
+        """GET a Flink SQL REST collection and return every ``data`` item,
+        following ``metadata.next`` pagination (the default page size is small, so
+        one GET truncates a large environment). Requests the max page size and
+        caps the page count against a cyclic cursor. Raises on network/HTTP/parse
+        failure — callers isolate it and return ``{}``."""
+        s = self._settings
+        items: list[dict] = []
+        params: dict | None = {"page_size": _FLINK_PAGE_SIZE}
+        next_url: str | None = url
+        pages = 0
+        while next_url and pages < _FLINK_MAX_PAGES:
+            response = httpx.get(
+                next_url,
+                params=params,
+                auth=(s.FLINK_API_KEY, s.FLINK_API_SECRET),
+                timeout=_REQUEST_TIMEOUT_SECONDS,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                break
+            items.extend(payload.get("data", []) or [])
+            # metadata.next is a full URL carrying the page token + page size.
+            next_url = (payload.get("metadata") or {}).get("next")
+            params = None
+            pages += 1
+        return items
+
     def list_statement_phases(self) -> dict[str, str]:
         """Return ``{statement_name: phase}`` for every known Flink statement.
 
@@ -165,19 +201,13 @@ class ConfluentClient:
             f"{s.FLINK_ORG_ID}/environments/{s.FLINK_ENV_ID}/statements"
         )
         try:
-            response = httpx.get(
-                url,
-                auth=(s.FLINK_API_KEY, s.FLINK_API_SECRET),
-                timeout=_REQUEST_TIMEOUT_SECONDS,
-            )
-            response.raise_for_status()
-            payload = response.json()
+            items = self._get_flink_collection(url)
         except (httpx.HTTPError, ValueError):
             logger.warning("ConfluentClient: list_statement_phases failed", exc_info=True)
             return {}
 
         phases: dict[str, str] = {}
-        for item in payload.get("data", []) if isinstance(payload, dict) else []:
+        for item in items:
             name = item.get("name")
             phase = (item.get("status") or {}).get("phase")
             if name and phase:
@@ -206,19 +236,13 @@ class ConfluentClient:
             f"{s.FLINK_ORG_ID}/environments/{s.FLINK_ENV_ID}/statements"
         )
         try:
-            response = httpx.get(
-                url,
-                auth=(s.FLINK_API_KEY, s.FLINK_API_SECRET),
-                timeout=_REQUEST_TIMEOUT_SECONDS,
-            )
-            response.raise_for_status()
-            payload = response.json()
+            items = self._get_flink_collection(url)
         except (httpx.HTTPError, ValueError):
             logger.warning("ConfluentClient: list_statements failed", exc_info=True)
             return {}
 
         statements: dict[str, dict] = {}
-        for item in payload.get("data", []) if isinstance(payload, dict) else []:
+        for item in items:
             name = item.get("name")
             if not name:
                 continue
@@ -256,19 +280,13 @@ class ConfluentClient:
             f"{s.FLINK_ORG_ID}/environments/{s.FLINK_ENV_ID}/materialized-tables"
         )
         try:
-            response = httpx.get(
-                url,
-                auth=(s.FLINK_API_KEY, s.FLINK_API_SECRET),
-                timeout=_REQUEST_TIMEOUT_SECONDS,
-            )
-            response.raise_for_status()
-            payload = response.json()
+            items = self._get_flink_collection(url)
         except (httpx.HTTPError, ValueError):
             logger.warning("ConfluentClient: list_materialized_tables failed", exc_info=True)
             return {}
 
         tables: dict[str, dict] = {}
-        for item in payload.get("data", []) if isinstance(payload, dict) else []:
+        for item in items:
             name = item.get("name")
             if not name:
                 continue

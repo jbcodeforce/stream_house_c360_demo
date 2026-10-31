@@ -419,7 +419,7 @@ def test_statement_metrics_absent_statement_yields_no_rate(monkeypatch):
 def test_list_materialized_tables_parses_name_phase_uid(monkeypatch):
     captured: dict = {}
 
-    def fake_get(url, auth=None, timeout=None):
+    def fake_get(url, params=None, auth=None, timeout=None):
         captured["url"] = url
         captured["auth"] = auth
         return _Resp({"data": [
@@ -535,7 +535,7 @@ def test_metrics_forbidden_is_swallowed(monkeypatch):
 def test_list_statements_parses_name_phase_sql_uid(monkeypatch):
     captured: dict = {}
 
-    def fake_get(url, auth=None, timeout=None):
+    def fake_get(url, params=None, auth=None, timeout=None):
         captured["url"] = url
         captured["auth"] = auth
         return _Resp({"data": [
@@ -569,7 +569,7 @@ def test_list_statements_parses_name_phase_sql_uid(monkeypatch):
 def test_statement_phases_uses_flink_endpoint_with_basic_auth(monkeypatch):
     captured: dict = {}
 
-    def fake_get(url, auth=None, timeout=None):
+    def fake_get(url, params=None, auth=None, timeout=None):
         captured["url"] = url
         captured["auth"] = auth
         return _Resp({"data": []})
@@ -790,3 +790,54 @@ def test_live_get_cost_zero_amount_is_unavailable():
     cost = providers.LiveProvider(client=client).get_cost(_crm_like_graph())
     assert cost.available is False
     assert cost.amount == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Flink REST list pagination (bug: crm streaming statements fell off page 1)
+# ---------------------------------------------------------------------------
+
+
+def test_list_statement_phases_follows_pagination(monkeypatch):
+    calls: list[str] = []
+
+    def fake_get(url, params=None, auth=None, timeout=None):
+        calls.append(url)
+        if len(calls) == 1:
+            return _Resp({
+                "data": [{"name": "s1", "status": {"phase": "RUNNING"}}],
+                "metadata": {"next": "https://flink.test/sql/v1/.../statements?page_token=T2"},
+            })
+        return _Resp({"data": [{"name": "s2", "status": {"phase": "RUNNING"}}], "metadata": {}})
+
+    monkeypatch.setattr(confluent_client.httpx, "get", fake_get)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    phases = client.list_statement_phases()
+
+    assert phases == {"s1": "RUNNING", "s2": "RUNNING"}  # both pages merged
+    assert len(calls) == 2
+    assert "page_token=T2" in calls[1]
+
+
+def test_list_materialized_tables_follows_pagination(monkeypatch):
+    calls: list[str] = []
+
+    def fake_get(url, params=None, auth=None, timeout=None):
+        calls.append(url)
+        if len(calls) == 1:
+            return _Resp({
+                "data": [{"name": "mt1", "status": {"phase": "RUNNING"}, "metadata": {"uid": "u1"}}],
+                "metadata": {"next": "https://flink.test/sql/v1/.../materialized-tables?page_token=T2"},
+            })
+        return _Resp({
+            "data": [{"name": "mt2", "status": {"phase": "RUNNING"}, "metadata": {"uid": "u2"}}],
+            "metadata": {},
+        })
+
+    monkeypatch.setattr(confluent_client.httpx, "get", fake_get)
+    client = confluent_client.ConfluentClient(settings_obj=_settings())
+
+    tables = client.list_materialized_tables()
+
+    assert set(tables) == {"mt1", "mt2"}  # both pages merged
+    assert len(calls) == 2
