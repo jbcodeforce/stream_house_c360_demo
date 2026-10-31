@@ -28,7 +28,7 @@
       "statement_name": "dbt-streamhouse-dim-account-tx-agg-70cc66",
       "topic": "dim_account_tx_agg",
       "table_type": "materialized_table",
-      "compute_pool_id": "lfcp-c360"
+      "compute_pool_id": "lfcp-mv6kkvw"
     },
     {
       "id": "dim_customers",
@@ -37,7 +37,7 @@
       "statement_name": "dbt-streamhouse-dim-customers-008df3",
       "topic": "dim_customers",
       "table_type": "materialized_table",
-      "compute_pool_id": "lfcp-c360"
+      "compute_pool_id": "lfcp-mv6kkvw"
     },
     {
       "id": "dim_transactions",
@@ -46,7 +46,7 @@
       "statement_name": "dbt-streamhouse-dim-transactions-16e650",
       "topic": "dim_transactions",
       "table_type": "materialized_table",
-      "compute_pool_id": "lfcp-c360"
+      "compute_pool_id": "lfcp-mv6kkvw"
     },
     {
       "id": "dim_tx_x_account",
@@ -55,7 +55,7 @@
       "statement_name": "dbt-streamhouse-dim-tx-x-account-18c9d6",
       "topic": "dim_tx_x_account",
       "table_type": "materialized_table",
-      "compute_pool_id": "lfcp-c360"
+      "compute_pool_id": "lfcp-mv6kkvw"
     },
     {
       "id": "fct_c360_profile",
@@ -65,7 +65,7 @@
       "topic": "fct_c360_profile",
       "is_product": true,
       "table_type": "materialized_table",
-      "compute_pool_id": "lfcp-c360"
+      "compute_pool_id": "lfcp-mv6kkvw"
     },
     {
       "id": "src_accounts",
@@ -74,7 +74,7 @@
       "statement_name": "dbt-streamhouse-src-accounts-c81842",
       "topic": "src_accounts",
       "table_type": "materialized_table",
-      "compute_pool_id": "lfcp-c360"
+      "compute_pool_id": "lfcp-mv6kkvw"
     },
     {
       "id": "src_customers",
@@ -83,7 +83,7 @@
       "statement_name": "dbt-streamhouse-src-customers-35926e",
       "topic": "src_customers",
       "table_type": "materialized_table",
-      "compute_pool_id": "lfcp-c360"
+      "compute_pool_id": "lfcp-mv6kkvw"
     },
     {
       "id": "src_transactions",
@@ -92,7 +92,7 @@
       "statement_name": "dbt-streamhouse-src-transactions-ef9e60",
       "topic": "src_transactions",
       "table_type": "materialized_table",
-      "compute_pool_id": "lfcp-c360"
+      "compute_pool_id": "lfcp-mv6kkvw"
     }
   ],
   "edges": [

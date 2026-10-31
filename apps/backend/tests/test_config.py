@@ -27,11 +27,16 @@ def test_resolve_env_file_custom(tmp_path):
 
 
 def test_crm_compute_pool_in_settings_and_summary():
-    # Defaults to None and surfaces in the config summary.
-    assert Settings().FLINK_CRM_COMPUTE_POOL_ID is None
-    assert Settings().summary()["FLINK_CRM_COMPUTE_POOL_ID"] == "None"
+    # Defaults to None and surfaces in the config summary. Disable .env loading
+    # (_env_file=None) and drop the var from the shell env so the default is
+    # observable even after live infra populates the repo .env.
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("FLINK_CRM_COMPUTE_POOL_ID", None)
+        default_settings = Settings(_env_file=None)
+        assert default_settings.FLINK_CRM_COMPUTE_POOL_ID is None
+        assert default_settings.summary()["FLINK_CRM_COMPUTE_POOL_ID"] == "None"
     # Carries a provided value through to the summary.
-    settings = Settings(FLINK_CRM_COMPUTE_POOL_ID="lfcp-crm")
+    settings = Settings(FLINK_CRM_COMPUTE_POOL_ID="lfcp-crm", _env_file=None)
     assert settings.FLINK_CRM_COMPUTE_POOL_ID == "lfcp-crm"
     assert settings.summary()["FLINK_CRM_COMPUTE_POOL_ID"] == "lfcp-crm"
 

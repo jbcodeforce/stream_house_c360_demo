@@ -80,10 +80,13 @@ def test_mock_get_cost_matches_fixture_cfu():
         for n in graph.nodes
         if n.type == "statement" and not n.external and n.id in mock_data.STATEMENT_FIXTURES
     )
+    expected_pools = sorted(
+        {n.compute_pool_id for n in graph.nodes if n.type == "statement" and not n.external and n.compute_pool_id}
+    )
     assert cost.available is True
     assert cost.cfu == expected_cfu
     assert cost.amount == round(expected_cfu * mock_data.MOCK_CFU_DOLLARS_PER_MONTH, 2)
-    assert cost.pool_ids == ["lfcp-c360"]  # owned pools from the graph's statement nodes
+    assert cost.pool_ids == expected_pools  # owned pools from the graph's statement nodes
 
 
 def test_mock_get_cost_nonzero_for_product_without_fixtures():
@@ -92,7 +95,13 @@ def test_mock_get_cost_nonzero_for_product_without_fixtures():
     # products with genuinely different costs. Guards the spec anti-goal.
     graph = descriptor.get_graph("crm")
     cost = providers.MockProvider(lagging=False).get_cost(graph)
+    owned_pools = sorted(
+        {n.compute_pool_id for n in graph.nodes if n.type == "statement" and not n.external and n.compute_pool_id}
+    )
+    external_pools = {n.compute_pool_id for n in graph.nodes if n.external and n.compute_pool_id}
     assert cost.available is True
     assert cost.amount > 0
     assert cost.cfu is not None and cost.cfu > 0
-    assert cost.pool_ids == ["lfcp-crm"]
+    assert cost.pool_ids == owned_pools
+    # Anti-double-count: the external (c360) upstream's pool is never counted for crm.
+    assert external_pools and not (set(cost.pool_ids) & external_pools)

@@ -91,7 +91,15 @@ def test_cost_route_returns_cost_response(client):
     assert body["available"] is True
     assert body["amount"] > 0
     assert body["cfu"] is not None
-    assert "lfcp-c360" in body["pool_ids"]
+    # pool_ids are the product's owned pools from the descriptor (not hardcoded,
+    # since real ids replace the build-time placeholders after a live regen).
+    from data_products import descriptor  # noqa: PLC0415
+
+    graph = descriptor.get_graph("c360")
+    expected_pools = sorted(
+        {n.compute_pool_id for n in graph.nodes if n.type == "statement" and not n.external and n.compute_pool_id}
+    )
+    assert body["pool_ids"] == expected_pools and expected_pools
 
 
 def test_unknown_product_cost_404(client):
