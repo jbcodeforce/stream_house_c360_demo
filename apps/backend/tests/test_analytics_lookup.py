@@ -30,8 +30,8 @@ def test_sql_str_doubles_single_quotes():
 def test_profile_sql_filters_by_equality_without_limit():
     sql = providers._profile_sql("00000000-0000-0000-0000-678901234568")
     assert "WHERE customer_id = '00000000-0000-0000-0000-678901234568'" in sql
-    # No LIMIT: the full upsert changelog for the key is read then collapsed to
-    # its latest row; a LIMIT would truncate to the stale first version.
+    # No LIMIT: confluent-sql snapshot mode returns the single current-state row
+    # for the key, so there is nothing to truncate.
     assert "LIMIT" not in sql
 
 
@@ -50,22 +50,20 @@ def test_get_customer_profile_unknown_id_returns_none(mock_mode):
 def test_get_customer_profile_rejects_malformed_id_without_query(live_mode, monkeypatch):
     # A malformed id must never reach the client (it would build a SQL literal).
     def boom(self, sql):  # pragma: no cover - must not be called
-        raise AssertionError("client.run should not be called for a malformed id")
+        raise AssertionError("client.query should not be called for a malformed id")
 
-    monkeypatch.setattr(providers.FlinkSnapshotClient, "run", boom)
+    monkeypatch.setattr(providers.ConfluentSqlClient, "query", boom)
     assert providers.get_customer_profile("'; DROP TABLE x; --") == (None, "live")
 
 
 def test_get_customer_profile_live_delegates_to_client(live_mode, monkeypatch):
     captured = {}
 
-    def fake_run(self, sql, max_rows=None, changelog_key=None):
+    def fake_query(self, sql):
         captured["sql"] = sql
-        captured["max_rows"] = max_rows
-        captured["changelog_key"] = changelog_key
         return [{"customer_id": "abc-123", "first_name": "Ada", "last_name": "Lovelace"}]
 
-    monkeypatch.setattr(providers.FlinkSnapshotClient, "run", fake_run)
+    monkeypatch.setattr(providers.ConfluentSqlClient, "query", fake_query)
     row, mode = providers.get_customer_profile("abc-123")
     assert mode == "live"
     assert row["first_name"] == "Ada"

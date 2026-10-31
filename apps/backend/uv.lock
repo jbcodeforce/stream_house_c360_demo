@@ -169,7 +169,7 @@ requires-dist = [
     { name = "cachetools", specifier = ">=7.2.0" },
     { name = "certifi", specifier = ">=2026.7.22" },
     { name = "confluent-kafka", specifier = ">=2.8.0" },
-    { name = "confluent-sql", specifier = ">=0.7.0" },
+    { name = "confluent-sql", specifier = ">=0.8.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
     { name = "fastavro", specifier = ">=1.10.0" },
     { name = "fastmcp", specifier = ">=4.1.2" },
@@ -399,14 +399,14 @@ wheels = [
 
 [[package]]
 name = "confluent-sql"
-version = "0.7.0"
+version = "0.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5b/06/40495b86d36b7a659d14bb4e48b1cc64f8e72ab4b0b225852d42a412693a/confluent_sql-0.7.0.tar.gz", hash = "sha256:a0f7078e004828a01fed52709267442ee73859b85a5242a84f883ad25471598a", size = 365715, upload-time = "2026-10-19T16:09:27.715Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/94/48/29c5ff22409b44415f66e36be6c2a29cef401984be2d65f173e6af8ee973/confluent_sql-0.8.0.tar.gz", hash = "sha256:e544f1fc34edbe458844b0461168c69f717fb0992a4b9a6c7377c80733e2c815", size = 473468, upload-time = "2026-10-30T16:27:05.391Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1c/07/8c583910b38d9e09e4d65e206495ef1320d84b265150dde94ac0057972ea/confluent_sql-0.7.0-py3-none-any.whl", hash = "sha256:2e5df8f05ffbb8a010721d2eb903882ea1a113d96dd62f427c248eed67489dbd", size = 136123, upload-time = "2026-10-19T16:09:26.367Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/18/521d6513b1816a571a227fbbc3b83caf8ef8675dfc20c3bff4f1d9b1baf4/confluent_sql-0.8.0-py3-none-any.whl", hash = "sha256:da5805804b16cddbad752e112a8f8db7b78330da7af3148349709f073d8910e7", size = 188384, upload-time = "2026-10-30T16:27:03.823Z" },
 ]
 
 [[package]]

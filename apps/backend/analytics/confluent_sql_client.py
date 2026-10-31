@@ -3,8 +3,9 @@
 ``confluent-sql`` is a DB-API v2 driver for Confluent Cloud for Apache Flink;
 its default cursor runs in **snapshot mode** — a point-in-time read that returns
 the table's current state (one row per primary key) as a finite result set and
-terminates. That is exactly what the CRM analytics data products need, so no
-changelog collapsing is required here (unlike ``FlinkSnapshotClient``).
+terminates. That is exactly what the analytics snapshot reads need (the CRM
+data products and the by-id profile lookup), so no changelog collapsing is
+required here.
 
 Like the other analytics clients, this is **best-effort**: incomplete
 credentials or any error (connect, execute, fetch) resolve to ``[]`` so the

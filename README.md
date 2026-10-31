@@ -132,6 +132,18 @@ The Web App and backend to support running the demonstration has the following c
 * This is to emulate a microservice implementation where each service is responsible for one business entity life cycle. An evolution of the implementation will be to implement the [CQRS pattern](https://jbcodeforce.github.io/eda-studies/patterns/cqrs/), and deploy each component as a standalone application
 * [See implementation details for developers willing to update this demonstration](./docs/web_app_design.md)
 
+### Capabilities demonstrated
+
+#### CDC envelop automatic processing to upsert table
+#### DBT deployment, Materialized table
+#### Lateral snapshot join on slow moving data
+#### Snapshot query
+#### Lightning query
+#### Complex event processing for fraud detection
+#### Chat with business data leveraging real-time context engine
+#### Flink pipeline lineage
+#### Billing aggregation per pipeline
+
 ### Demonstration Script
 
 As explained before we can demonstrate the Streamhouse architecture in different ways, but the following activities are common:
@@ -142,3 +154,9 @@ As explained before we can demonstrate the Streamhouse architecture in different
 1. Optional: [AWS components deployments](./docs/sre_aws.md) using terraform. It also includes the terraform definition to deploy Debezium CDC source connector. This step is optional as the application can emulates CDC connector and use local database.
 * [Deploying the Flink pipeline](./docs/flink_deployment.md) to build the customer 360 analytics profile using Confluent dbt.
 * [See dedicated 'demo script' note](./docs/demo_script.md) to run the application with local components.
+
+## Sources
+
+* [My living Flink study book](https://jbcodeforce.github.io/flink-studies/)
+* [Confluent Stream Processing with Confluent Cloud for Apache Flink](https://docs.confluent.io/cloud/current/flink/overview.html)
+* [Streamhouse](https://streamhouse.com/)

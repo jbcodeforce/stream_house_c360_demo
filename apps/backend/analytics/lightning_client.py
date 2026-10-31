@@ -2,10 +2,9 @@
 
 The Real-Time Context Engine (RTCE) exposes a Flink-maintained table for
 *current-state point lookups* over HTTP: a single synchronous POST returns the
-table's current rows in milliseconds. This is the contrast to
-``flink_snapshot.FlinkSnapshotClient`` — no statement lifecycle (create → poll →
-page → delete) and no upsert changelog to collapse, because Lightning already
-serves current state.
+table's current rows in milliseconds. This is the contrast to the
+``confluent-sql`` snapshot client — no DB-API connection/cursor round trip —
+while both serve current state directly, with no upsert changelog to collapse.
 
 The request is HTTP Basic auth with a dedicated *Global* resource API key (``CONFLUENT_GLOBAL_KEY``/``SECRET``,
 provisioned by ``IaC/ccloud/lightning.tf``) and a body scoped by

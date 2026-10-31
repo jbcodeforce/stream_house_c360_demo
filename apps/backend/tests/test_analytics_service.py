@@ -32,7 +32,7 @@ _SEG = [
 def test_live_path_assembles_from_crm(monkeypatch):
     monkeypatch.setattr(service.providers, "_mode", lambda: "live")
     monkeypatch.setattr(
-        service.crm_provider,
+        service.providers,
         "fetch_crm_result_sets",
         lambda: (_SUMMARY, _SEG, [], [], []),
     )

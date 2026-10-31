@@ -7,7 +7,7 @@ isolation are exercised without any driver or network.
 
 from __future__ import annotations
 
-from analytics.crm_provider import fetch_crm_result_sets
+from analytics.providers import fetch_crm_result_sets
 
 CANNED = {
     "fct_crm_summary": [{"qscope": "ALL", "total_customers": 10}],

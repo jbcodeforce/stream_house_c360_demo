@@ -5,6 +5,7 @@
 # Confluent Cloud service account or user with Org Admin role
 cc_sa_env_mgr="sa-REPLACE"
 prefix="jtbd1"
+cost_api_principal_id =
 
 # ── Cloud / region (Kafka cluster + Flink compute pool) ─────────────────────────
 cloud_provider="AWS"
